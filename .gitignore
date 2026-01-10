@@ -1,7 +1,70 @@
-venv/
-.venv/
+# Python
 __pycache__/
-cert.pem
-key.pem
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
 
+# Virtual Environment
+venv/
+ENV/
+env/
+.venv
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Environment variables (contains secrets!)
 .env
+
+# SSL Certificates (contains private keys!)
+cert/
+*.pem
+*.key
+*.crt
+
+# Downloaded files cache
+downloads/
+cache/
+*.mkv
+*.mp4
+*.avi
+*.part
+
+# Logs
+*.log
+logs/
+
+# OS
+Thumbs.db
+.DS_Store
+
+# Testing
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Temporary files
+*.tmp
+*.temp
+temp/

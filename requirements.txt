@@ -1,6 +1,4 @@
 Flask
-pycryptodome
 qbittorrent-api
-requests
 myjdapi
 python-dotenv
