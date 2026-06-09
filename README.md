@@ -12,6 +12,9 @@ This project was thinked to use with **Palantir 3**, but its known that works wi
 [![GitHub issues](https://img.shields.io/github/issues/an0mal1a/self-debrid)](https://github.com/an0mal1a/self-debrid/issues)
 
 ---
+## ❗Advertisement
+I've noticed that this repository is getting a few stars; there are some known issues that I think I can fix easily. One of the most important ones is the need to restart the API to refresh the JDownloader session. If I have time, I'll fix a few bugs and improve the project!
+
 
 ## ✨ Features
 
@@ -33,7 +36,7 @@ This project was thinked to use with **Palantir 3**, but its known that works wi
 - **JDownloader 2** - [Download](https://jdownloader.org/download/index) (for direct downloads - **highly recommended**)
 
 ### Why JDownloader?
-This project is intended to use with Kodi and with and specific specific plugin that almost always uses 1fichier, this hoster in the free tier has a very slow download and high timeout, using JDownloader, the speed of the download is incredible (100MB/s) and the cooldown between downloads are shorts (5 to 10 minutes), this is **more than enough** to stream a movie or TV episode.
+This project is intended to use with Kodi and specific specific plugin that almost always uses 1fichier, this hoster in the free tier has a very slow download and high timeout, using JDownloader, the speed of the download is incredible (100MB/s) and the cooldown between downloads are shorts (5 to 10 minutes), this is **more than enough** to stream a movie or TV episode.
 
 ---
 
