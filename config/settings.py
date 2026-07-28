@@ -1,12 +1,16 @@
 from dotenv import load_dotenv
 from pathlib import Path
 import os
+import tempfile
 
 load_dotenv()
 
+_download_dir = os.getenv('DOWNLOAD_DIR')
+
+
 class Config:
     # Paths
-    DOWNLOAD_DIR = Path(os.getenv('DOWNLOAD_DIR', 'J:/DebridCache'))
+    DOWNLOAD_DIR = Path(_download_dir) if _download_dir else Path(tempfile.mkdtemp(prefix='self-debrid-'))
     CERT_PATH = Path(os.getenv('CERT_PATH', 'cert/cert.pem'))
     KEY_PATH = Path(os.getenv('KEY_PATH', 'cert/key.pem'))
     

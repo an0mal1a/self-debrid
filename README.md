@@ -114,7 +114,7 @@ You should see:
 
 📡 API: https://0.0.0.0:443
 🎬 Stream: http://0.0.0.0:8081
-💾 Cache: J:/DebridCache
+💾 Cache: <carpeta temporal del sistema>
 🔧 qBittorrent: ✅ Connected
 📥 JDownloader: ✅ Connected
 ============================================================
