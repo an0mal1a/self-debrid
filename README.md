@@ -12,9 +12,14 @@ This project was thinked to use with **Palantir 3**, but its known that works wi
 [![GitHub issues](https://img.shields.io/github/issues/an0mal1a/self-debrid)](https://github.com/an0mal1a/self-debrid/issues)
 
 ---
-## ❗Advertisement
-I've noticed that this repository is getting a few stars; there are some known issues that I think I can fix easily. One of the most important ones is the need to restart the API to refresh the JDownloader session. If I have time, I'll fix a few bugs and improve the project!
+## What's New
+After returning to this project, I noticed that the account connection flow was incomplete. Existing API keys from previous installations continue to work, but new accounts could not be paired correctly.
 
+Self-Debrid now includes a complete local pairing workflow: Kodi displays a short code, you approve it in the Self-Debrid page, and the addon receives its API key automatically. No manual API-key copy and paste is required.
+
+
+## ❗Advertisement
+I've noticed that this repository is getting a few stars; there are some known issues that I think I can fix easily. One of the most important ones is the ~~need to restart the API to refresh the JDownloader session~~. If I have time, I'll fix a few bugs and improve the project!
 
 ## ✨ Features
 
@@ -133,15 +138,18 @@ In order to allow the plugin Palantir on Kodi works with self-debrid we need to 
 
 ## 📺 Kodi Setup
 
-### Configure Debrid Addon
+### Configure Your Account
 
-Kodi > Palantir 3 supports alldebrid and real-debrid. Here's how to configure them for Self-Debrid:
+Palantir 3 supports AllDebrid and Real-Debrid. Self-Debrid uses the AllDebrid-compatible option.
 
-1. Open your addon settings
-2. Find **Accounts**
-3. Select **AllDebrid** (Self-Debrid mimics AllDebrid API)
-4. Set **API Key**: `anything` (not validated, use any text)
-5. Test and authorize
+1. In Kodi, open **Palantir 3 → Settings → Accounts**.
+2. Enable and select **AllDebrid**.
+3. Start the account authorization process. Kodi will display a four-character code.
+4. On a browser that can access your Self-Debrid server, open `https://api.alldebrid.com/pin/`.
+5. Enter the code displayed in Kodi and select **Authorize device**.
+6. Once the confirmation page is shown, return to Kodi. The account is linked and Kodi saves the generated local API key automatically.
+
+The code expires after 10 minutes. If the browser is on a different device, set `PIN_BASE_URL` to a reachable HTTPS address for this server before starting Self-Debrid. Kodi will display that address during pairing; its certificate must be trusted by the browser.
 
 ---
 

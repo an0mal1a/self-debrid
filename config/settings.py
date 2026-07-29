@@ -17,6 +17,10 @@ class Config:
     # Network
     API_PORT = int(os.getenv('API_PORT', 443))
     STREAM_PORT = int(os.getenv('STREAM_PORT', 8081))
+    # Optional URL shown to the user during Kodi's PIN authorization flow.
+    # When unset it uses the URL Kodi used to call the API (normally
+    # https://api.alldebrid.com after the hosts-file override).
+    PIN_BASE_URL = os.getenv('PIN_BASE_URL', '').rstrip('/')
     
     # qBittorrent
     USE_BITTORRENT = os.getenv('USE_BITTORRENT', 'false').lower() == 'true'
