@@ -1,0 +1,4 @@
+<rss><channel>
+<item><title>Unlabelled release</title><link>https://indexer.invalid/download/1</link></item>
+<item><title>Enclosure only</title><enclosure url="https://indexer.invalid/download/2" length="12345" type="application/x-bittorrent"/></item>
+</channel></rss>

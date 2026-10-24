@@ -1,0 +1,6 @@
+<?xml version="1.0"?>
+<caps><limits max="100" default="50"/><searching>
+<search available="yes" supportedParams="q"/>
+<movie-search available="yes" supportedParams="q,imdbid"/>
+<tv-search available="yes" supportedParams="q,imdbid,season,ep"/>
+</searching></caps>

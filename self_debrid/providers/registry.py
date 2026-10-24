@@ -1,8 +1,9 @@
-"""Concurrent provider registry with failure isolation and deduplication."""
+"""Bounded, cancellable provider execution with structured failure isolation."""
 
 from __future__ import annotations
 
 import asyncio
+import math
 from typing import Iterable, Sequence
 
 from self_debrid.domain import (
@@ -11,81 +12,73 @@ from self_debrid.domain import (
     ProviderFailure,
     StreamCandidate,
 )
-from self_debrid.providers.base import Provider
+from self_debrid.providers.base import Provider, ProviderError
 
 
 class ProviderRegistry:
-    def __init__(self, providers: Iterable[Provider] = ()) -> None:
-        self._providers = list(providers)
+    def __init__(
+        self,
+        providers: Iterable[Provider] = (),
+        *,
+        max_concurrency: int = 4,
+        provider_timeout: float = 15.0,
+    ) -> None:
+        if type(max_concurrency) is not int or max_concurrency < 1:
+            raise ValueError("max_concurrency must be a positive integer")
+        if not math.isfinite(provider_timeout) or provider_timeout <= 0:
+            raise ValueError("provider_timeout must be finite and positive")
+        self._providers: list[Provider] = []
+        self._max_concurrency = max_concurrency
+        self._provider_timeout = provider_timeout
+        for provider in providers:
+            self.register(provider)
 
     @property
     def providers(self) -> Sequence[Provider]:
         return tuple(self._providers)
 
     def register(self, provider: Provider) -> None:
+        if not provider.name.strip():
+            raise ValueError("provider name must not be blank")
         if any(existing.name == provider.name for existing in self._providers):
             raise ValueError(f"provider already registered: {provider.name}")
         self._providers.append(provider)
 
     async def search(self, request: MediaRequest) -> DiscoveryResult:
-        tasks = [
-            self._search_provider(provider, request)
-            for provider in self._providers
-        ]
-        results = await asyncio.gather(*tasks)
+        semaphore = asyncio.Semaphore(self._max_concurrency)
 
-        failures = []
-        candidates = []
+        async def run(
+            provider: Provider,
+        ) -> tuple[Sequence[StreamCandidate], ProviderFailure | None]:
+            async with semaphore:
+                try:
+                    candidates = await asyncio.wait_for(
+                        provider.search(request),
+                        timeout=self._provider_timeout,
+                    )
+                    candidates = tuple(candidates)
+                    if not all(
+                        isinstance(candidate, StreamCandidate)
+                        for candidate in candidates
+                    ):
+                        raise TypeError("provider returned invalid candidates")
+                    return candidates, None
+                except asyncio.TimeoutError:
+                    return (), ProviderFailure(
+                        provider.name, "Provider search timed out", "timeout"
+                    )
+                except ProviderError as exc:
+                    return (), ProviderFailure(provider.name, str(exc), exc.code)
+                except Exception:
+                    # Third-party exceptions may contain URLs, API keys or HTML.
+                    return (), ProviderFailure(
+                        provider.name, "Provider search failed", "provider_error"
+                    )
 
-        for provider_candidates, provider_failure in results:
-            candidates.extend(provider_candidates)
-            if provider_failure is not None:
-                failures.append(provider_failure)
-
+        results = await asyncio.gather(*(run(provider) for provider in self.providers))
         return DiscoveryResult(
-            candidates=tuple(self._deduplicate(candidates)),
-            failures=tuple(failures),
+            candidates=tuple(
+                candidate for candidates, _ in results for candidate in candidates
+            ),
+            failures=tuple(failure for _, failure in results if failure is not None),
         )
-
-    async def _search_provider(
-        self,
-        provider: Provider,
-        request: MediaRequest,
-    ) -> tuple[Sequence[StreamCandidate], ProviderFailure | None]:
-        try:
-            return await provider.search(request), None
-        except Exception as exc:
-            return (), ProviderFailure(
-                provider=provider.name,
-                error=str(exc),
-            )
-
-    def _deduplicate(
-        self,
-        candidates: Iterable[StreamCandidate],
-    ) -> list[StreamCandidate]:
-        unique: dict[str, StreamCandidate] = {}
-
-        for candidate in candidates:
-            current = unique.get(candidate.identity)
-            if current is None or self._is_better_duplicate(candidate, current):
-                unique[candidate.identity] = candidate
-
-        return list(unique.values())
-
-    def _is_better_duplicate(
-        self,
-        candidate: StreamCandidate,
-        current: StreamCandidate,
-    ) -> bool:
-        candidate_key = (
-            candidate.cached,
-            candidate.seeders or 0,
-            candidate.size_bytes or 0,
-        )
-        current_key = (
-            current.cached,
-            current.seeders or 0,
-            current.size_bytes or 0,
-        )
-        return candidate_key > current_key

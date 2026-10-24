@@ -1,0 +1,20 @@
+<?xml version="1.0"?>
+<rss version="2.0" xmlns:torznab="http://torznab.com/schemas/2015/feed">
+<channel><title>Fixture indexer</title>
+<item><title>Example.Movie.2024.2160p.WEB.H265.HDR10.Spanish.English.MULTI</title>
+<link>https://indexer.invalid/get?id=1&amp;apikey=private-download-token</link>
+<enclosure url="https://indexer.invalid/get?id=1&amp;apikey=private-download-token" length="9000000000" type="application/x-bittorrent"/>
+<torznab:attr name="infohash" value="ABCDEF0123456789ABCDEF0123456789ABCDEF01"/>
+<torznab:attr name="size" value="8000000000"/>
+<torznab:attr name="seeders" value="51"/>
+<torznab:attr name="category" value="2000"/>
+<torznab:attr name="category" value="2040"/>
+</item>
+<item><title>Example.Show.S02E05.1080p.x264.Latino</title>
+<torznab:attr name="magneturl" value="magnet:?xt=urn:btih:1111111111111111111111111111111111111111&amp;so=5"/>
+<torznab:attr name="seeders" value="0"/>
+<torznab:attr name="language" value="English"/>
+<torznab:attr name="language" value="Spanish"/>
+<torznab:attr name="fileindex" value="5"/>
+</item>
+</channel></rss>

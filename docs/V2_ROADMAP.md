@@ -1,86 +1,66 @@
 # Self-Debrid v2 roadmap
 
-## Phase 0 - Foundation
+## Phase 0 — Standalone foundation
 
-Status: in progress.
+Status: implemented and validated offline.
 
-- v2-development branch
-- architecture and engineering rules
-- MediaRequest and StreamCandidate domain models
-- provider protocol and registry
-- deterministic ranking
-- Stremio ID parsing and manifest helper
-- unit tests
+- Completely separate v2 tree; v1 remains in `main` and `v1-kodi`.
+- Installable Python 3.10+ package, CLI and environment configuration.
+- Immutable validated domain models and deterministic ranking.
+- Provider protocol and registry.
+- Stremio ID parsing and manifest helpers only.
+- English documentation and Python 3.10/3.11/3.12 CI.
 
-Exit condition: the core contracts are stable enough that provider and client work can proceed independently.
+## Phase 1 — Discovery vertical slice
 
-## Phase 1 - Discovery vertical slice
+Status: implemented and validated with synthetic fixtures and mocked providers;
+live Prowlarr validation remains an integration follow-up.
 
-- SearchService orchestration
-- provider timeouts and health reporting
-- first real provider: Torznab/Prowlarr
-- candidate deduplication across providers
-- configuration model for quality, language and size
-- fixture-based provider tests
+- SearchService aggregation, deduplication and preference ranking.
+- Bounded concurrency, per-provider deadlines and structured failures.
+- Async Torznab/Prowlarr provider with capability discovery and explicit fallback.
+- Hardened XML parsing and connection/read deadlines.
+- Explicit release metadata parsing and canonical torrent/file identities.
+- Fixture-based offline unit tests, packaging and CLI validation.
 
-Exit condition: a movie or episode request returns a reliable ranked candidate list without downloading anything.
+Exit condition: a movie or episode request returns ranked discovery candidates
+without downloading anything. Lead Developer review is required before starting
+the next implementation phase. Draft PR #2 stays open and unmerged.
 
-## Phase 2 - Native Stremio MVP
+## Phase 2 — Native Stremio integration (not implemented)
 
-- HTTP route for manifest.json
-- stream/movie endpoint
-- stream/series endpoint
-- readable stream names/descriptions
-- configure page with basic preferences
-- local-network/public base URL handling
-- install-in-Stremio flow
+- HTTP manifest and movie/series stream routes.
+- Readable result names/descriptions.
+- Configuration UI and installation flow.
+- Public/local base URL handling.
 
-Exit condition: Stremio can request a title and display ranked Self-Debrid results.
+Discovery integration must not imply playable local torrents before the playback
+engine exists. Define the handoff explicitly during the phase design review.
 
-## Phase 3 - Torrent playback engine
+## Phase 3 — Torrent playback engine (not implemented)
 
-- torrent metadata fetch
-- exact movie file matching
-- exact SxxExx matching for series and season packs
-- qBittorrent file priority management
-- playback-oriented piece/file strategy
-- stable playback sessions
-- correct MIME, HEAD and Range support
-- seek behavior while downloading
+- Torrent metadata retrieval and exact movie/episode file selection.
+- Correct handling of season packs; no largest-file shortcut.
+- qBittorrent file priorities and playback-oriented download sessions.
+- Stable stream identifiers, MIME types, HEAD and HTTP Range support.
+- Seek behavior and cancellation while downloading.
 
-Exit condition: selecting a Stremio result starts the correct file consistently and supports normal playback/seeking.
+## Phase 4 — Persistent cache (not implemented)
 
-## Phase 4 - Persistent cache
+- SQLite schema/migrations and candidate/torrent/file records.
+- Active session and cached-file state, restart recovery.
+- Cache identity and size-aware eviction.
 
-- SQLite schema and migrations
-- candidate cache
-- torrent metadata cache
-- file/download session records
-- true cache identity
-- LRU/size-aware eviction
-- startup recovery
+## Phase 5 — New Kodi adapter (not implemented)
 
-Exit condition: restarts do not lose useful state and repeated playback can reuse existing files instantly.
+- Protocol translation around the v2 application services.
+- Pairing and compatibility contract design without importing v1.
+- Compatibility tests and usable network URLs.
 
-## Phase 5 - Kodi convergence
-
-- adapter around the v2 application service
-- remove localhost assumptions
-- preserve pairing flow
-- compatibility tests for expected AllDebrid endpoints
-- deprecate duplicated legacy download logic
-
-Exit condition: Kodi and Stremio use the same discovery/resolver/cache/streaming core.
+v1 remains independently maintained. There is no in-tree legacy migration path.
 
 ## Later
 
-- additional providers
-- optional direct-download providers/resolvers
-- metrics and diagnostics
-- Docker-first install
-- provider plugin loading
-- optional prefetch/warm-cache policies
-
-## Explicitly deferred
-
-Do not spend early development time on a large collection of brittle site-specific HTML scrapers. Prefer Torznab/Prowlarr and stable provider APIs first.
+Additional stable API providers, optional direct-download resolvers, diagnostics,
+Docker packaging, plugin loading and prefetch policies. Torrentio, JDownloader,
+HTML scraper collections and heavyweight infrastructure are outside this phase.

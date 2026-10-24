@@ -7,7 +7,6 @@ from typing import Iterable, Optional, Tuple
 
 from self_debrid.domain import StreamCandidate
 
-
 DEFAULT_RESOLUTION_ORDER = (
     "2160p",
     "1080p",
@@ -23,15 +22,28 @@ class RankingPreferences:
     max_size_bytes: Optional[int] = None
     min_seeders: int = 0
 
+    def __post_init__(self) -> None:
+        if type(self.min_seeders) is not int or self.min_seeders < 0:
+            raise ValueError("min_seeders must be a non-negative integer")
+        if self.max_size_bytes is not None and (
+            type(self.max_size_bytes) is not int or self.max_size_bytes < 0
+        ):
+            raise ValueError("max_size_bytes must be a non-negative integer")
+        for name in ("resolution_order", "preferred_languages"):
+            normalized = tuple(
+                dict.fromkeys(value.lower().strip() for value in getattr(self, name))
+            )
+            if any(not value for value in normalized):
+                raise ValueError(f"{name} must not contain empty values")
+            object.__setattr__(self, name, normalized)
+
 
 def rank_candidates(
     candidates: Iterable[StreamCandidate],
     preferences: RankingPreferences = RankingPreferences(),
 ) -> list[StreamCandidate]:
     eligible = [
-        candidate
-        for candidate in candidates
-        if _is_eligible(candidate, preferences)
+        candidate for candidate in candidates if _is_eligible(candidate, preferences)
     ]
 
     return sorted(
@@ -65,13 +77,16 @@ def _is_eligible(
 def _sort_key(
     candidate: StreamCandidate,
     preferences: RankingPreferences,
-) -> tuple[int, int, int, int, str]:
+) -> tuple[int, int, int, int, str, str, str, str]:
     return (
         1 if candidate.cached else 0,
         _resolution_score(candidate.resolution, preferences.resolution_order),
         _language_score(candidate.languages, preferences.preferred_languages),
         candidate.seeders or 0,
         candidate.identity,
+        candidate.provider,
+        repr(candidate),
+        candidate.url or "",
     )
 
 
@@ -99,8 +114,7 @@ def _language_score(
         return 0
 
     normalized_preferences = tuple(
-        language.lower().strip()
-        for language in preferred_languages
+        language.lower().strip() for language in preferred_languages
     )
 
     best = 0

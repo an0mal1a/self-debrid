@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import re
+
 from self_debrid.domain import MediaRequest, MediaType
 
 
@@ -42,11 +44,10 @@ def parse_stream_request(media_type: str, raw_id: str) -> MediaRequest:
 
     imdb_id, season_text, episode_text = parts
 
-    try:
-        season = int(season_text)
-        episode = int(episode_text)
-    except ValueError as exc:
-        raise ValueError("season and episode must be integers") from exc
+    if not all(re.fullmatch(r"[0-9]+", text) for text in (season_text, episode_text)):
+        raise ValueError("season and episode must be non-negative integers")
+    season = int(season_text)
+    episode = int(episode_text)
 
     return MediaRequest(
         media_type=MediaType.SERIES,

@@ -1,9 +1,10 @@
 import unittest
 
+from self_debrid.adapters.stremio import build_manifest, parse_stream_request
+from self_debrid.application.search import SearchService
 from self_debrid.domain import MediaRequest, MediaType, StreamCandidate
+from self_debrid.domain.ranking import RankingPreferences, rank_candidates
 from self_debrid.providers.registry import ProviderRegistry
-from self_debrid.ranking import RankingPreferences, rank_candidates
-from self_debrid.stremio import build_manifest, parse_stream_request
 
 
 class FakeProvider:
@@ -35,10 +36,10 @@ class DomainTests(unittest.TestCase):
         candidate = StreamCandidate(
             provider="test",
             title="Example",
-            info_hash="ABCDEF",
+            info_hash="ABCDEF" + "0" * 34,
             file_index=3,
         )
-        self.assertEqual(candidate.identity, "torrent:abcdef:3")
+        self.assertEqual(candidate.identity, "torrent:abcdef" + "0" * 34 + ":3")
 
 
 class StremioTests(unittest.TestCase):
@@ -66,14 +67,14 @@ class RankingTests(unittest.TestCase):
             StreamCandidate(
                 provider="one",
                 title="4K",
-                info_hash="a",
+                info_hash="a" * 40,
                 resolution="2160p",
                 seeders=100,
             ),
             StreamCandidate(
                 provider="two",
                 title="Cached 1080p",
-                info_hash="b",
+                info_hash="b" * 40,
                 resolution="1080p",
                 seeders=1,
                 cached=True,
@@ -92,21 +93,21 @@ class RankingTests(unittest.TestCase):
             StreamCandidate(
                 provider="one",
                 title="Too large",
-                info_hash="a",
+                info_hash="a" * 40,
                 size_bytes=20_000,
                 seeders=100,
             ),
             StreamCandidate(
                 provider="one",
                 title="Too few seeders",
-                info_hash="b",
+                info_hash="b" * 40,
                 size_bytes=5_000,
                 seeders=2,
             ),
             StreamCandidate(
                 provider="one",
                 title="Eligible",
-                info_hash="c",
+                info_hash="c" * 40,
                 size_bytes=5_000,
                 seeders=10,
             ),
@@ -121,13 +122,13 @@ class ProviderRegistryTests(unittest.IsolatedAsyncioTestCase):
         weaker = StreamCandidate(
             provider="one",
             title="Same torrent",
-            info_hash="ABC",
+            info_hash=("ABC" * 40)[:40],
             seeders=5,
         )
         stronger = StreamCandidate(
             provider="two",
             title="Same torrent",
-            info_hash="abc",
+            info_hash=("abc" * 40)[:40],
             seeders=20,
         )
 
@@ -139,7 +140,7 @@ class ProviderRegistryTests(unittest.IsolatedAsyncioTestCase):
             ]
         )
 
-        result = await registry.search(
+        result = await SearchService(registry).search(
             MediaRequest(MediaType.MOVIE, "tt1234567"),
         )
 

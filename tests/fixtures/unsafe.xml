@@ -1,0 +1,2 @@
+<!DOCTYPE rss [<!ENTITY xxe SYSTEM "file:///etc/passwd">]>
+<rss><channel><item><title>&xxe;</title></item></channel></rss>

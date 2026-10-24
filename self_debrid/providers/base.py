@@ -7,6 +7,14 @@ from typing import Protocol, Sequence
 from self_debrid.domain import MediaRequest, StreamCandidate
 
 
+class ProviderError(Exception):
+    """A credential-safe failure. Messages must never include remote response text."""
+
+    def __init__(self, code: str, message: str) -> None:
+        super().__init__(message)
+        self.code = code
+
+
 class Provider(Protocol):
     @property
     def name(self) -> str:

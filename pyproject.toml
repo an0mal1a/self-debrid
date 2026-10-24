@@ -1,0 +1,19 @@
+[build-system]
+requires = ["setuptools>=77"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "self-debrid"
+version = "2.0.0.dev0"
+description = "Standalone media discovery foundation for Self-Debrid v2"
+readme = "README.md"
+requires-python = ">=3.10"
+license = "MIT"
+license-files = ["LICENSE"]
+dependencies = ["aiohttp>=3.10,<4", "defusedxml>=0.7.1,<1"]
+
+[project.scripts]
+self-debrid = "self_debrid.__main__:main"
+
+[tool.setuptools.packages.find]
+include = ["self_debrid*"]
