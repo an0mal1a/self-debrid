@@ -172,13 +172,13 @@ class SearchServiceTests(unittest.IsolatedAsyncioTestCase):
         result = await SearchService(
             registry, RankingPreferences(max_size_bytes=10_000_000_000)
         ).search(REQUEST)
-        self.assertEqual(len(result.candidates), 2)
+        self.assertEqual(len(result.candidates), 1)
         self.assertEqual(result.candidates[0].provider, "second")
         self.assertTrue(result.candidates[0].cached)
         self.assertEqual(result.candidates[0].seeders, 100)
         self.assertEqual(result.candidates[0].size_bytes, 8_000_000_000)
         self.assertEqual(result.candidates[0].resolution, "2160p")
-        self.assertEqual(result.candidates[1].file_index, 5)
+        self.assertEqual(dict(result.exclusions)["wrong_media_type"], 1)
         self.assertEqual(result.failures[0].provider, "broken")
 
     async def test_completion_order_does_not_change_search_results(self):

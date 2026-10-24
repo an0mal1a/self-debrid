@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Protocol, Sequence
+from typing import Protocol, Sequence, runtime_checkable
 
 from self_debrid.domain import MediaRequest, StreamCandidate
 
@@ -23,4 +23,11 @@ class Provider(Protocol):
 
     async def search(self, request: MediaRequest) -> Sequence[StreamCandidate]:
         """Return normalized candidates for one media request."""
+        ...
+
+
+@runtime_checkable
+class TitleAwareProvider(Provider, Protocol):
+    async def requires_title(self, request: MediaRequest) -> bool:
+        """True only when an advertised text search needs missing title metadata."""
         ...

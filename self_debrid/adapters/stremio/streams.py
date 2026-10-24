@@ -10,7 +10,7 @@ from self_debrid.domain.episode_selection import EPISODE_LABEL, matches_episode
 MAX_FILE_INDEX = 65535
 
 
-def _public_text(value: str, secrets: tuple[str, ...]) -> str:
+def redact_text(value: str, secrets: tuple[str, ...]) -> str:
     for secret in secrets:
         if secret:
             for representation in (secret, quote(secret, safe=""), quote_plus(secret)):
@@ -79,12 +79,12 @@ def candidate_to_stream(
         )
     stream: dict[str, object] = {
         "infoHash": candidate.info_hash,
-        "name": _public_text(
+        "name": redact_text(
             "Self-Debrid"
             + (" · " + candidate.resolution if candidate.resolution else ""),
             secrets,
         ),
-        "description": "\n".join(_public_text(value, secrets) for value in information),
+        "description": "\n".join(redact_text(value, secrets) for value in information),
     }
     if candidate.file_index is not None:
         stream["fileIdx"] = candidate.file_index

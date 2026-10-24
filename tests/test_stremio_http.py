@@ -45,7 +45,7 @@ class HttpTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(data["resources"][0]["name"], "stream")
         self.assertEqual(data["types"], ["movie", "series"])
         self.assertEqual(data["catalogs"], [])
-        self.assertRegex(data["version"], r"^2\.0\.0-dev\.1$")
+        self.assertRegex(data["version"], r"^2\.0\.0-dev\.2$")
         self.assertNotIn(SECRET, json.dumps(data))
         self.service.search.assert_not_awaited()
 

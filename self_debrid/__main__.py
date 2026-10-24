@@ -11,9 +11,11 @@ from typing import Sequence
 
 from self_debrid.adapters.stremio import parse_stream_request
 from self_debrid.adapters.stremio.http import create_app, serve
+from self_debrid.adapters.stremio.streams import redact_text
 from self_debrid.domain import DiscoveryResult, MediaRequest
 from self_debrid.infrastructure.bootstrap import build_search_service
 from self_debrid.infrastructure.config import AppConfig
+from self_debrid.infrastructure.doctor import diagnose
 
 
 async def run_search(config: AppConfig, request: MediaRequest) -> DiscoveryResult:
@@ -24,7 +26,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
         description="Self-Debrid v2 discovery CLI and Stremio addon"
     )
-    parser.add_argument("--version", action="version", version="2.0.0.dev1")
+    parser.add_argument("--version", action="version", version="2.0.0.dev2")
     commands = parser.add_subparsers(dest="command", required=True)
     search = commands.add_parser(
         "search", help="Discover ranked releases; no downloading"
@@ -37,6 +39,12 @@ def main(argv: Sequence[str] | None = None) -> int:
     server = commands.add_parser("serve", help="Serve the native Stremio torrent addon")
     server.add_argument("--host", help="Bind address; default 127.0.0.1 or HTTP_HOST")
     server.add_argument("--port", type=int, help="Bind port; default 8080 or HTTP_PORT")
+    doctor = commands.add_parser(
+        "doctor", help="Local provider/metadata diagnostics; no credentials in output"
+    )
+    doctor.add_argument("media_type", choices=("movie", "series"))
+    doctor.add_argument("id", help="Test IMDb ID; series use tt1234567:2:5")
+    doctor.add_argument("--title", help="Optional explicit title")
     args = parser.parse_args(argv)
     if args.command == "serve":
         environ = dict(os.environ)
@@ -49,7 +57,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         except ValueError as exc:
             parser.error(str(exc))
         app = create_app(
-            build_search_service(config), secrets=(config.torznab.api_key,)
+            build_search_service(config),
+            secrets=tuple(provider.api_key for provider in config.configured_providers),
         )
         print(
             "Self-Debrid native torrent addon: " + config.server.manifest_url,
@@ -67,6 +76,9 @@ def main(argv: Sequence[str] | None = None) -> int:
         config = AppConfig.from_env()
     except ValueError as exc:
         parser.error(str(exc))
+    if args.command == "doctor":
+        print(json.dumps(asyncio.run(diagnose(config, request)), indent=2))
+        return 0
     result = asyncio.run(run_search(config, request))
     output = asdict(result)
     # Download URLs may contain private tracker passkeys or API credentials.
@@ -76,7 +88,18 @@ def main(argv: Sequence[str] | None = None) -> int:
         record["identity"] = (
             candidate.identity if candidate.info_hash else "url:[redacted]"
         )
-    print(json.dumps(output, indent=2))
+    secrets = tuple(provider.api_key for provider in config.configured_providers)
+
+    def sanitize(value):
+        if isinstance(value, str):
+            return redact_text(value, secrets)
+        if isinstance(value, dict):
+            return {key: sanitize(item) for key, item in value.items()}
+        if isinstance(value, (list, tuple)):
+            return [sanitize(item) for item in value]
+        return value
+
+    print(json.dumps(sanitize(output), indent=2))
     return 1 if result.failures and not result.candidates else 0
 
 

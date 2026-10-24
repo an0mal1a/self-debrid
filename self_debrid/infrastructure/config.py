@@ -10,6 +10,12 @@ from typing import Mapping, TypeVar
 from urllib.parse import urlsplit
 
 from self_debrid.domain.ranking import DEFAULT_RESOLUTION_ORDER, RankingPreferences
+from self_debrid.infrastructure.reliability import (
+    MAX_PROVIDERS,
+    DiscoveryCacheSettings,
+    MetadataSettings,
+    load_provider_records,
+)
 
 Number = TypeVar("Number", int, float)
 
@@ -83,14 +89,33 @@ class TorznabSettings:
 
 @dataclass(frozen=True, slots=True)
 class AppConfig:
-    torznab: TorznabSettings
+    torznab: TorznabSettings | None = None
     ranking: RankingPreferences = RankingPreferences()
     max_concurrency: int = 4
     provider_timeout: float = 20.0
     server: ServerSettings = ServerSettings()
+    providers: tuple[TorznabSettings, ...] = ()
+    metadata: MetadataSettings = MetadataSettings()
+    discovery_cache: DiscoveryCacheSettings = DiscoveryCacheSettings()
+
+    @property
+    def configured_providers(self) -> tuple[TorznabSettings, ...]:
+        return self.providers or ((self.torznab,) if self.torznab else ())
 
     def __post_init__(self) -> None:
-        if type(self.max_concurrency) is not int or self.max_concurrency < 1:
+        configured = self.configured_providers
+        if not 1 <= len(configured) <= MAX_PROVIDERS:
+            raise ValueError("configure between 1 and 16 providers")
+        if len({provider.name.casefold() for provider in configured}) != len(
+            configured
+        ):
+            raise ValueError("provider names must be unique")
+        if type(self.providers) is not tuple:
+            raise ValueError("providers must be an immutable tuple")
+        if (
+            type(self.max_concurrency) is not int
+            or not 1 <= self.max_concurrency <= MAX_PROVIDERS
+        ):
             raise ValueError("MAX_CONCURRENCY must be positive")
         if not math.isfinite(self.provider_timeout) or self.provider_timeout <= 0:
             raise ValueError("PROVIDER_TIMEOUT must be finite and positive")
@@ -113,14 +138,49 @@ class AppConfig:
                 if value.strip()
             )
 
+        def boolean(name: str) -> bool:
+            value = env.get(name, "false").lower().strip()
+            if value not in ("true", "false"):
+                raise ValueError(f"{name} must be true or false")
+            return value == "true"
+
         maximum = env.get("MAX_SIZE_BYTES", "").strip()
+        providers = ()
+        if env.get("PROVIDERS_FILE"):
+            providers = tuple(
+                TorznabSettings(
+                    base_url=record["url"],
+                    api_key=record["api_key"],
+                    name=record["name"],
+                    connect_timeout=number("CONNECT_TIMEOUT", "5", float),
+                    read_timeout=number("READ_TIMEOUT", "10", float),
+                )
+                for record in load_provider_records(env["PROVIDERS_FILE"], env)
+            )
         return cls(
-            torznab=TorznabSettings(
+            providers=providers,
+            torznab=None
+            if providers
+            else TorznabSettings(
                 base_url=env.get("TORZNAB_URL", ""),
                 api_key=env.get("TORZNAB_API_KEY", ""),
                 name=env.get("TORZNAB_NAME", "prowlarr"),
                 connect_timeout=number("CONNECT_TIMEOUT", "5", float),
                 read_timeout=number("READ_TIMEOUT", "10", float),
+            ),
+            metadata=MetadataSettings(
+                enabled=boolean("CINEMETA_ENABLED"),
+                connect_timeout=number("METADATA_CONNECT_TIMEOUT", "3", float),
+                read_timeout=number("METADATA_READ_TIMEOUT", "5", float),
+                ttl=number("METADATA_TTL", "3600", float),
+                negative_ttl=number("METADATA_NEGATIVE_TTL", "30", float),
+                max_entries=number("METADATA_CACHE_ENTRIES", "256", int),
+            ),
+            discovery_cache=DiscoveryCacheSettings(
+                ttl=number("DISCOVERY_CACHE_TTL", "30", float),
+                max_entries=number("DISCOVERY_CACHE_ENTRIES", "128", int),
+                max_bytes=number("DISCOVERY_CACHE_BYTES", "8388608", int),
+                max_inflight=number("DISCOVERY_MAX_INFLIGHT", "32", int),
             ),
             ranking=RankingPreferences(
                 resolution_order=labels(

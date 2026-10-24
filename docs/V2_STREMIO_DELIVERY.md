@@ -1,5 +1,9 @@
 # Phase 2 native Stremio delivery
 
+Historical report for accepted b39f5be. Phase 2.5 adds metadata hydration,
+multi-indexer configuration, discovery caches and local diagnostics. See the
+current README and V2_RELIABILITY_DELIVERY.md for current behavior.
+
 ## Scope
 
 Implements the Lead Developer review at accepted foundation commit 83d44df and the

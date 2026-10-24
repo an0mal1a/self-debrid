@@ -9,6 +9,8 @@ release candidates with structured provider failures.
 returns ranked BitTorrent v1 hash streams for Stremio to play with its own torrent
 engine. Self-Debrid does not download torrents or serve local video bytes.
 Live Stremio playback and real Prowlarr integration have not been verified.
+Phase 2.5 adds optional Cinemeta title/year lookup, multi-indexer configuration,
+short-lived shared discovery caching and local diagnostics.
 
 ## v1 and v2 are separate applications
 
@@ -37,7 +39,13 @@ will follow later. v2 does not preserve the v1 API or its configuration.
 - `SearchService`: provider aggregation, normalization, metadata-preserving
   deduplication, preference filtering and deterministic ranking.
 - Async Torznab discovery, including per-indexer Prowlarr Torznab endpoints.
-- Capability discovery and conservative title-based fallback.
+- Capability discovery, IMDb-first searches and optional Cinemeta title/year
+  hydration when a configured indexer needs a supported text query.
+- Up to 16 independently named endpoints from a small JSON file with environment
+  references for API keys; the single-indexer environment setup remains supported.
+- Bounded positive/negative metadata caches and short-lived discovery-result cache
+  with shared in-flight work, cancellation isolation and no download-cache claims.
+- Movie identity/title/year checks and local `doctor` exclusion/error diagnostics.
 - Safe XML parsing, bounded response sizes, explicit connection/read timeouts.
 - Partial-item recovery: good RSS items survive bad items; one sanitized summary
   records the skipped count and at most five item positions per feed.
@@ -98,21 +106,56 @@ Never commit your API key or a URL containing one.
 | `HTTP_HOST` | `127.0.0.1` | HTTP bind host; use `0.0.0.0` explicitly for LAN access |
 | `HTTP_PORT` | `8080` | HTTP port, 1–65535 |
 | `PUBLIC_ADDON_URL` | empty | Optional advertised base URL; used only for the startup installation address |
-| `TORZNAB_URL` | required | Complete per-indexer Torznab endpoint, without query parameters |
+| `TORZNAB_URL` | required without `PROVIDERS_FILE` | Complete per-indexer Torznab endpoint, without query parameters |
+| `PROVIDERS_FILE` | empty | Private JSON config of 1–16 named Torznab endpoints; replaces single-endpoint settings |
+| `CINEMETA_ENABLED` | `false` | Opt-in lazy IMDb → title/year lookup; sends requested IDs/media types to Cinemeta |
+| `METADATA_CONNECT_TIMEOUT` / `METADATA_READ_TIMEOUT` | `3` / `5` | Metadata connection/read deadlines in seconds |
+| `METADATA_TTL` / `METADATA_NEGATIVE_TTL` | `3600` / `30` | Positive/negative metadata retention in seconds |
+| `METADATA_CACHE_ENTRIES` | `256` | Metadata LRU entry bound; also limited to 512 KiB estimated payload |
+| `DISCOVERY_CACHE_TTL` | `30` | Successful discovery retention, seconds; `0` disables retained results |
+| `DISCOVERY_CACHE_ENTRIES` / `DISCOVERY_CACHE_BYTES` | `128` / `8388608` | Discovery LRU count/estimated payload byte bounds |
+| `DISCOVERY_MAX_INFLIGHT` | `32` | Distinct active discovery requests; identical requests share work |
 | `TORZNAB_API_KEY` | empty | API key, sent as an encoded Torznab query parameter |
 | `TORZNAB_NAME` | `prowlarr` | Stable provider identifier |
 | `CONNECT_TIMEOUT` | `5` | HTTP connection timeout, seconds |
 | `READ_TIMEOUT` | `10` | HTTP socket read timeout, seconds |
 | `PROVIDER_TIMEOUT` | `20` | Entire active provider search, including capabilities, seconds |
-| `MAX_CONCURRENCY` | `4` | Maximum active providers per registry search |
+| `MAX_CONCURRENCY` | `4` | Maximum active provider operations across the shared registry |
 | `RESOLUTION_ORDER` | `2160p,1080p,720p,480p` | Most preferred first |
 | `PREFERRED_LANGUAGES` | empty | Comma-separated codes: `es`, `en`, `es-419`, `multi` |
 | `MAX_SIZE_BYTES` | empty | Optional upper size limit, including cached results |
 | `MIN_SEEDERS` | `0` | Minimum known seeders for uncached results |
 
-The CLI configures one Torznab endpoint. Library users can register several named
-providers with `ProviderRegistry` and call `await SearchService(registry).search(request)`.
 Configuration is read at the CLI boundary, never during imports or inside the domain.
+The CLI and server use the same immutable settings and ProviderRegistry. Metadata
+resolution is an application-facing protocol, independent of Stremio HTTP handlers
+and Torznab. No catalog resource, external API key, database or new runtime dependency
+is needed.
+
+### Configure multiple Prowlarr indexers
+
+Copy `providers.example.json` to `providers.json` and edit endpoints:
+
+```json
+{
+  "providers": [
+    {"name": "public-one", "url": "http://127.0.0.1:9696/1/api", "api_key_env": "PROWLARR_API_KEY"},
+    {"name": "public-two", "url": "http://127.0.0.1:9696/2/api", "api_key_env": "PROWLARR_API_KEY"}
+  ]
+}
+```
+
+Set `PROVIDERS_FILE=providers.json` and `PROWLARR_API_KEY` locally in your exported
+`.env`. Keys may reference different environment variables per indexer. An omitted
+`api_key_env` means no key; a referenced variable must exist. Inline `api_key`
+fields, duplicate names (case-insensitive), unknown fields, query credentials and
+more than 16 providers are rejected. The JSON read is limited to 64 KiB. The local
+`providers.json` is gitignored. Config is loaded at startup; restart after edits.
+When set, the file replaces `TORZNAB_URL` rather than appending a duplicate provider.
+With no file, existing `TORZNAB_URL` / `TORZNAB_API_KEY` / `TORZNAB_NAME` work as before.
+
+Choose separate per-indexer endpoints, not a combined feed with ambiguous
+capabilities. API keys stay on the server; never add them to Stremio addon URLs.
 
 The discovery `search` command still returns JSON containing ordered candidates and failures. Download URLs are
 omitted from CLI output because they may include credentials; library results
@@ -148,18 +191,30 @@ http://localhost:9696/1/api?t=tvsearch&q=Example+Show&season=2&ep=5&apikey=REDAC
 
 If TV coordinate parameters are unavailable, an advertised `q` search uses
 `Example Show S02E05`. An advertised generic `search` is a final title-based
-fallback. No title lookup is performed. An IMDb-only request on an indexer without
-IMDb support returns `unsupported_search`. Failed or invalid capabilities are
-reported rather than guessed. Library callers may explicitly supply known
+fallback. With `CINEMETA_ENABLED=true`, missing title/year metadata is resolved
+lazily for providers that advertise usable text search but cannot execute the IMDb
+request. Failed or invalid capabilities are reported rather than guessed. With
+metadata disabled or unavailable, an indexer needing a title returns
+`unsupported_search`; IMDb-capable providers still return their results. Library callers may explicitly supply known
 `TorznabCapabilities` for an endpoint whose caps API is incompatible.
 
 Capabilities are retained for the lifetime of a provider instance. Only the
 indexer's first/default result page is fetched. There are no retries or HTML
 scrapers. HTTP redirects are rejected to avoid forwarding API keys.
 
-Stremio normally supplies only an IMDb ID and episode coordinates. This phase has
-no title lookup: an endpoint lacking the necessary IMDb search capability may
-return no Stremio results, even though the discovery CLI works with `--title`.
+Stremio normally supplies only an IMDb ID and episode coordinates. To improve
+title-only indexers, explicitly enable `CINEMETA_ENABLED=true`. This sends requested
+IMDb IDs and media types to `v3-cinemeta.strem.io` when a title is needed. It does
+not send provider keys, search history batches or local candidate lists, and does
+not use Cinemeta as a catalog. No extra metadata API key is required.
+
+A provider with advertised IMDb support is queried directly. It does not trigger
+a metadata lookup just because it returned zero matches. Text-only providers share
+one lookup per media type/IMDb ID, with strict payload identity, bounded JSON,
+connection/read/total timeouts and negative caching after outages. Season/episode
+coordinates are preserved when advertised; otherwise `S02E05` is appended to `q`.
+A movie `year` query parameter is sent only when advertised. An explicit CLI
+`--title` avoids metadata lookup. Disabling Cinemeta leaves that CLI path available.
 
 ## Native Stremio installation
 
@@ -198,7 +253,7 @@ still determine whether playback starts. See the exact
 
 ### HTTP contract and file selection
 
-- `GET /manifest.json`: stable ID `com.selfdebrid.addon`, version `2.0.0-dev.1`,
+- `GET /manifest.json`: stable ID `com.selfdebrid.addon`, version `2.0.0-dev.2`,
   movie/series streams only; no catalogs, metadata or configuration resources.
 - `GET /stream/movie/tt1234567.json`: ranked native torrent streams.
 - `GET /stream/series/tt1234567:2:5.json`: conservatively matched episode streams.
@@ -226,6 +281,42 @@ description says so. This fallback is evidence from naming, not verified file
 selection: misleading names, samples, extras or multiple versions can still pick
 the wrong file. Movies without an index use the same largest-file behavior.
 Exact torrent metadata inspection belongs to Phase 3.
+
+## Discovery reliability and diagnostics
+
+`self-debrid doctor movie tt1254207` checks configured endpoints/capabilities,
+per-provider search results, safe provider error codes, application exclusions and
+how many surviving candidates cannot be represented as native Stremio torrents.
+For episodes use `self-debrid doctor series tt1234567:2:5` with a real series ID.
+It performs an explicit Cinemeta check when enabled, even if every indexer can
+search by IMDb. `doctor` is a local command, never a public HTTP route. It prints
+no endpoint URLs, candidate hashes/locators or credentials. An exit code of zero
+means diagnostics completed; inspect the per-provider error/status fields.
+
+Results can be excluded for a different echoed IMDb ID, explicit episodic content
+on movie searches, incompatible episode/pack evidence, a movie year differing by
+more than one year, or a clearly different title before a release year/episode/
+quality boundary. Punctuation, accents, bracketed release groups and leading
+English articles are normalized. A matching upstream IMDb ID takes precedence
+over alternate title spelling. Unknown title/year evidence stays unknown and is
+not rejected by a fuzzy-score threshold; numeric titles are treated conservatively.
+Title aliases without an echoed IMDb ID may still be filtered. If lazy metadata
+was already resolved, it validates all providers' results in that search.
+
+Successful discovery results (including genuine empty/fully filtered results)
+are retained briefly with media/configuration-specific keys. Results containing
+provider failures or metadata errors are not retained. An oversized result is
+not retained either. Memory is bounded by entry count, estimated serialized bytes
+and in-flight limits; metadata caches have separate bounds. Concurrent identical
+requests share work; cancelling one waiter leaves other waiters intact, while the
+last waiter cancels unneeded work. TTL zero still permits sharing active work.
+A full in-flight budget produces a safe `busy` failure. Provider concurrency is
+bounded across all searches of the shared registry, not independently per client.
+
+**Discovery-result caching is not downloaded media caching.** It never changes
+`StreamCandidate.cached`, announces file availability or guarantees playback.
+The HTTP `Cache-Control: no-store` response remains unchanged. There is no SQLite
+or restart persistence; capability snapshots last for the provider instance.
 
 ## Identity, metadata and ranking
 
@@ -259,6 +350,7 @@ python -c 'import self_debrid; from self_debrid.application.search import Search
 python -m self_debrid --help
 self-debrid --version
 self-debrid serve --help
+self-debrid doctor --help
 ```
 
 To build distribution artifacts:
@@ -271,4 +363,5 @@ python -m build
 GitHub Actions runs unit tests, builds the package, installs the wheel and checks
 imports/CLI outside the source directory for each supported CI Python version.
 See [architecture](docs/V2_ARCHITECTURE.md), [roadmap](docs/V2_ROADMAP.md) and
-[engineering rules](AGENTS.md).
+[engineering rules](AGENTS.md). Phase 2.5 details are recorded in
+[discovery reliability delivery](docs/V2_RELIABILITY_DELIVERY.md).

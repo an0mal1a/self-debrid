@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import math
-from typing import Iterable, Sequence
+from typing import Awaitable, Callable, Iterable, Sequence
 
 from self_debrid.domain import (
     DiscoveryResult,
@@ -30,6 +30,7 @@ class ProviderRegistry:
         self._providers: list[Provider] = []
         self._max_concurrency = max_concurrency
         self._provider_timeout = provider_timeout
+        self._semaphore = asyncio.Semaphore(max_concurrency)
         for provider in providers:
             self.register(provider)
 
@@ -44,16 +45,29 @@ class ProviderRegistry:
             raise ValueError(f"provider already registered: {provider.name}")
         self._providers.append(provider)
 
-    async def search(self, request: MediaRequest) -> DiscoveryResult:
-        semaphore = asyncio.Semaphore(self._max_concurrency)
+    async def search(
+        self,
+        request: MediaRequest,
+        *,
+        prepare: Callable[[Provider, MediaRequest], Awaitable[MediaRequest]]
+        | None = None,
+    ) -> DiscoveryResult:
+        semaphore = self._semaphore
 
         async def run(
             provider: Provider,
         ) -> tuple[Sequence[StreamCandidate], ProviderFailure | None]:
             async with semaphore:
                 try:
+
+                    async def execute() -> Sequence[StreamCandidate]:
+                        effective = (
+                            await prepare(provider, request) if prepare else request
+                        )
+                        return await provider.search(effective)
+
                     candidates = await asyncio.wait_for(
-                        provider.search(request),
+                        execute(),
                         timeout=self._provider_timeout,
                     )
                     candidates = tuple(candidates)
@@ -63,7 +77,7 @@ class ProviderRegistry:
                     ):
                         raise TypeError("provider returned invalid candidates")
                     return candidates, None
-                except asyncio.TimeoutError:
+                except (asyncio.TimeoutError, TimeoutError):
                     return (), ProviderFailure(
                         provider.name, "Provider search timed out", "timeout"
                     )

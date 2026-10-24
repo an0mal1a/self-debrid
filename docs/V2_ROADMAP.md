@@ -48,7 +48,27 @@ index can use Stremio's largest-file fallback only under the documented naming
 policy. Self-Debrid does not select, download or serve the file. Packs require a
 known index and matching upstream episode mapping. Configure UI is deferred.
 
-Stop here for Lead Developer review; do not start Phase 3.
+Accepted as an architectural foundation at b39f5be. Phase 2.5 improves discovery
+before any local playback work; real playback validation remains outstanding.
+
+## Phase 2.5 — Discovery reliability
+
+Status: implemented and validated offline; operator Prowlarr/Stremio validation
+and Lead Developer review remain required before playback reliability claims.
+
+- Optional application-facing MetadataResolver and Cinemeta metadata adapter.
+- Lazy title/year hydration for text-only indexers, positive/negative TTL cache,
+  identity/schema validation, explicit deadlines and response-size bounds.
+- IMDb-first capability policy without unnecessary metadata calls or blind retries.
+- Multiple immutable named endpoints from JSON/environment references, at most 16,
+  retaining the legacy single-indexer environment configuration.
+- Shared bounded discovery TTL/LRU and in-flight coalescing with cancellation safety;
+  no failure-bearing snapshot retention and no downloaded-file cache status.
+- Conservative identity/title/year/type validation before deduplication and ranking.
+- Local doctor capability, failure, filter and native-compatibility diagnostics.
+- Offline metadata/cache/mixed-provider/CLI/HTTP regression tests.
+
+Stop after Phase 2.5 for Lead Developer review. No Phase 3 work is authorized.
 
 ## Phase 3 — Torrent playback engine (not implemented)
 
@@ -74,6 +94,6 @@ v1 remains independently maintained. There is no in-tree legacy migration path.
 
 ## Later
 
-Additional stable API providers, optional direct-download resolvers, diagnostics,
+Additional stable API providers, optional direct-download resolvers, richer diagnostics,
 Docker packaging, plugin loading and prefetch policies. Torrentio, JDownloader,
 HTML scraper collections and heavyweight infrastructure are outside this phase.

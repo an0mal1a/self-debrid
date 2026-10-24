@@ -19,6 +19,23 @@ class ReleaseMetadata:
     episode: int | None = None
     size_bytes: int | None = None
     seeders: int | None = None
+    year: int | None = None
+
+
+def release_year(title: str) -> int | None:
+    """A release year is a delimited year after a nonempty title, before quality."""
+    title = re.sub(r"^(?:\s*\[[^\]\r\n]{1,80}\]\s*)+", "", title)
+    prefix = re.split(
+        r"(?i)(?<![a-z0-9])(?:2160p|1080p|720p|480p|s[0-9]{1,2}e[0-9]{1,3})(?![a-z0-9])",
+        title,
+    )[0]
+    matches = list(
+        re.finditer(r"(?<![a-z0-9])((?:18|19|20)[0-9]{2})(?![a-z0-9])", prefix, re.I)
+    )
+    for match in reversed(matches):
+        if prefix[: match.start()].strip(" ._-(["):
+            return int(match[1])
+    return None
 
 
 def _label(pattern: str, text: str) -> re.Match | None:
@@ -100,4 +117,9 @@ def parse_release(
         episode=episode,
         size_bytes=nonnegative_integer(attributes.get("size")),
         seeders=nonnegative_integer(attributes.get("seeders")),
+        year=(
+            int(attributes["year"])
+            if re.fullmatch(r"(?:18|19|20)[0-9]{2}", attributes.get("year", ""))
+            else release_year(title)
+        ),
     )

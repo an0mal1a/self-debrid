@@ -86,7 +86,7 @@ class CliTests(unittest.TestCase):
         ):
             self.assertEqual(main(["search", "movie", "tt123"]), 0)
         data = json.loads(output.getvalue())
-        self.assertEqual(len(data["candidates"]), 2)
+        self.assertEqual(len(data["candidates"]), 1)
         self.assertEqual(data["candidates"][0]["seeders"], 51)
         self.assertEqual(data["failures"], [])
         self.assertNotIn("private-download-token", output.getvalue())
@@ -94,7 +94,7 @@ class CliTests(unittest.TestCase):
     def test_help_and_version_do_not_need_configuration(self):
         for args, expected in (
             (["--help"], "discovery CLI"),
-            (["--version"], "2.0.0.dev1"),
+            (["--version"], "2.0.0.dev2"),
         ):
             output = StringIO()
             with redirect_stdout(output), self.assertRaises(SystemExit) as caught:

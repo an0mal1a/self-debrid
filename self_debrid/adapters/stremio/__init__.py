@@ -7,7 +7,7 @@ import re
 from self_debrid.domain import MediaRequest, MediaType
 
 
-def build_manifest(version: str = "2.0.0-dev.1") -> dict:
+def build_manifest(version: str = "2.0.0-dev.2") -> dict:
     return {
         "id": "com.selfdebrid.addon",
         "version": version,

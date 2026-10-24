@@ -139,6 +139,13 @@ def build_search_params(
         else:
             result = {}
         if result:
+            if (
+                not episode_request
+                and "q" in result
+                and request.year is not None
+                and "year" in params
+            ):
+                result["year"] = str(request.year)
             if episode_request:
                 if coordinates <= params:
                     result.update(season=str(request.season), ep=str(request.episode))
@@ -197,6 +204,13 @@ def _item_urls(item: Element, attrs: dict[str, list[str]]) -> list[str]:
         except ValueError:
             continue
     return urls
+
+
+def _item_imdb(attrs: dict[str, str]) -> str | None:
+    raw = attrs.get("imdbid", attrs.get("imdb", "")).strip()
+    if re.fullmatch(r"[0-9]+", raw):
+        raw = "tt" + raw
+    return raw if re.fullmatch(r"tt[0-9]+", raw) else None
 
 
 def _parse_item(item: Element, provider: str) -> StreamCandidate:
@@ -265,6 +279,8 @@ def _parse_item(item: Element, provider: str) -> StreamCandidate:
             languages=metadata.languages,
             season=metadata.season,
             episode=metadata.episode,
+            year=metadata.year,
+            imdb_id=_item_imdb(flat),
         )
     except ValueError:
         raise ProviderError(
@@ -350,15 +366,35 @@ class TorznabProvider:
     def name(self) -> str:
         return self._name
 
-    async def search(self, request: MediaRequest) -> tuple[StreamCandidate, ...]:
+    async def get_capabilities(self) -> TorznabCapabilities:
         if self._capabilities is None:
             async with self._caps_lock:
                 if self._capabilities is None:
                     self._capabilities = parse_capabilities(
                         await self._fetch({"t": "caps"})
                     )
+        return self._capabilities
+
+    async def requires_title(self, request: MediaRequest) -> bool:
+        caps = await self.get_capabilities()
+        try:
+            build_search_params(request, caps)
+            return False
+        except ProviderError as exc:
+            if exc.code != "unsupported_search":
+                raise
+        return any(
+            params is not None and "q" in params
+            for params in (
+                caps.movie if request.media_type is MediaType.MOVIE else caps.tv,
+                caps.search,
+            )
+        )
+
+    async def search(self, request: MediaRequest) -> tuple[StreamCandidate, ...]:
+        caps = await self.get_capabilities()
         return parse_results(
-            await self._fetch(build_search_params(request, self._capabilities)),
+            await self._fetch(build_search_params(request, caps)),
             self.name,
         )
 
@@ -384,7 +420,7 @@ class TorznabProvider:
                             )
                         chunks.append(chunk)
                     return b"".join(chunks)
-        except asyncio.TimeoutError:
+        except (asyncio.TimeoutError, TimeoutError):
             raise ProviderError(
                 "timeout", "Torznab connection or read timed out"
             ) from None

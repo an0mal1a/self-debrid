@@ -21,8 +21,9 @@ are implemented. Domain/ranking/metadata/deduplication and episode evidence rema
 pure. SearchService owns orchestration and episode filtering before deduplication.
 The aiohttp adapter translates requests and serializes native torrent streams.
 
-The Lead Developer authorized native Stremio integration in Phase 2. Stop after
-that phase. Do not begin Phase 3 or add Torrentio, torrent downloading, qBittorrent
+The Lead Developer accepted Phase 2 at b39f5be and authorized Phase 2.5 discovery
+reliability: optional metadata resolution, multi-indexer config, bounded memory
+caches, conservative validation and local doctor diagnostics. Stop after Phase 2.5. Do not begin Phase 3 or add Torrentio, torrent downloading, qBittorrent
 playback, JDownloader, local HTTP Range streaming, configure UI, SQLite, Docker,
 a frontend/custom player, or a Kodi adapter.
 
@@ -41,22 +42,26 @@ a frontend/custom player, or a Kodi adapter.
 5. Missing metadata stays unknown. No broad language guesses from substrings.
 6. The registry bounds concurrency and times out each active provider. Preserve
    caller cancellation and successful results when other providers fail.
-7. Capabilities determine supported Torznab queries. No blind IMDb or season/ep
+7. MetadataResolver is an application contract. Cinemeta is an optional adapter,
+   disabled by default; disclose requested IDs sent externally. Resolve lazily
+   only when a provider requires supported title search, except explicit doctor
+   checks. Metadata outages must preserve IMDb-capable results.
+8. Capabilities determine supported Torznab queries. No blind IMDb or season/ep
    assumptions; text fallback requires an explicit title and advertised `q`.
-8. Network boundaries need explicit connection/read and overall time bounds.
+9. Network boundaries need explicit connection/read and overall time bounds.
    Bound XML responses and use hardened XML parsing. Do not scrape HTML.
-9. Never log API keys, download URLs, raw network exceptions or remote XML error
+10. Never log API keys, download URLs, raw network exceptions or remote XML error
    descriptions. `ProviderError` messages must be safe for user diagnostics.
-10. Configuration is read explicitly at the application boundary, not on import.
-11. Bad feed items must not discard good items. Bound diagnostics to one summary
+11. Configuration is read explicitly at the application boundary, not on import.
+12. Bad feed items must not discard good items. Bound diagnostics to one summary
     per feed and at most five item positions, without remote titles/URLs/errors.
-12. Torrent locators are not HTTP video URLs. Emit only supported v1 hash streams;
+13. Torrent locators are not HTTP video URLs. Emit only supported v1 hash streams;
     do not serialize provider URLs, trackers, API keys or v2-only hashes.
-13. Series candidates need matching episode evidence. Packs require both a known
+14. Series candidates need matching episode evidence. Packs require both a known
     usable index and an exact upstream episode mapping; obvious mismatches fail.
-14. Bind HTTP to loopback by default; LAN access is explicit. Preserve CORS and
+15. Bind HTTP to loopback by default; LAN access is explicit. Preserve CORS and
     sanitized JSON errors and disable raw request access logs.
-15. Keep runtime dependencies minimal. SQLite comes later; no PostgreSQL, Redis,
+16. Keep runtime dependencies minimal. SQLite comes later; no PostgreSQL, Redis,
     Celery or dependency injection framework is needed.
 
 ## Code quality and validation
@@ -72,3 +77,19 @@ a frontend/custom player, or a Kodi adapter.
 - Before committing: review the diff, check for dangling legacy imports, ensure
   docs distinguish working features from plans, and verify protected branch refs
   remain unchanged. Commit and push only the authorized v2 branch.
+
+## Phase 2.5 reliability invariants
+
+- Use immutable configuration with at most 16 uniquely named endpoints. JSON
+  references environment key names; credentials never belong in addon URLs.
+- Discovery cache keys separate media coordinates/title/year and configuration.
+  Bound entries, estimated bytes and in-flight work. Do not retain failure-bearing
+  results; sharing active work must survive cancellation of individual waiters.
+- Discovery caching never sets downloaded-file cache/availability flags.
+- Metadata caches retain positive and negative lookups with bounded TTL and size.
+- Reject explicit identity/year/media contradictions; keep unknown evidence
+  unknown, preserve season-pack policy and avoid fuzzy matching thresholds.
+- Doctor is local only. No endpoint URLs, hashes, locators, credentials or raw
+  remote strings in diagnostic output. Capability output uses a known allowlist.
+- All tests are offline; loopback HTTP is allowed. Do not claim real playback
+  reliability until an operator performs the documented Prowlarr/Stremio test.

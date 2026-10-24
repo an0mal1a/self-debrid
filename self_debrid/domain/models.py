@@ -27,8 +27,13 @@ class MediaRequest:
     season: Optional[int] = None
     episode: Optional[int] = None
     title: Optional[str] = None
+    year: Optional[int] = None
 
     def __post_init__(self) -> None:
+        if self.year is not None and (
+            type(self.year) is not int or not 1800 <= self.year <= 2099
+        ):
+            raise ValueError("year must be between 1800 and 2099")
         if not isinstance(self.media_type, MediaType):
             raise ValueError("media_type must be a MediaType")
         if not isinstance(self.imdb_id, str) or not re.fullmatch(
@@ -36,7 +41,11 @@ class MediaRequest:
         ):
             raise ValueError("imdb_id must be an IMDb title id such as tt1234567")
         if self.title is not None:
-            if not self.title.strip():
+            if (
+                not isinstance(self.title, str)
+                or not self.title.strip()
+                or len(self.title) > 300
+            ):
                 raise ValueError("title must not be blank")
             object.__setattr__(self, "title", self.title.strip())
 
@@ -76,6 +85,8 @@ class StreamCandidate:
     cached: bool = False
     season: Optional[int] = None
     episode: Optional[int] = None
+    year: Optional[int] = None
+    imdb_id: Optional[str] = None
 
     def __post_init__(self) -> None:
         if not self.provider.strip():
@@ -83,6 +94,12 @@ class StreamCandidate:
 
         if not self.title.strip():
             raise ValueError("title is required")
+        if self.year is not None and (
+            type(self.year) is not int or not 1800 <= self.year <= 2099
+        ):
+            raise ValueError("year must be between 1800 and 2099")
+        if self.imdb_id is not None and not re.fullmatch(r"tt[0-9]+", self.imdb_id):
+            raise ValueError("candidate IMDb ID must be a title ID")
 
         if self.url is not None:
             object.__setattr__(self, "url", normalize_url(self.url))
@@ -147,3 +164,5 @@ class ProviderFailure:
 class DiscoveryResult:
     candidates: Tuple[StreamCandidate, ...]
     failures: Tuple[ProviderFailure, ...] = field(default_factory=tuple)
+    exclusions: Tuple[Tuple[str, int], ...] = field(default_factory=tuple)
+    metadata_error: Optional[str] = None

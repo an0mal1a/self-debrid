@@ -1,4 +1,4 @@
-# Real Stremio smoke test — Phase 2
+# Real Stremio smoke test — Phase 2.5 discovery reliability
 
 This is a procedure for a human with a real Prowlarr endpoint and Stremio Desktop.
 It has **not** been executed against those real services during implementation.
@@ -17,9 +17,15 @@ cp .env.example .env
 Edit `.env` locally. Set `TORZNAB_URL` to the complete Torznab endpoint for a
 **torrent** indexer in Prowlarr, such as `http://127.0.0.1:9696/1/api`, and set its
 API key separately in `TORZNAB_API_KEY`. Do not paste an API-key-bearing URL into
-Stremio. Use an indexer advertising movie `imdbid` and TV `imdbid,season,ep` for
-this smoke test. Stremio supplies IDs, not the optional title needed by some
-indexers; this phase does not resolve titles from IMDb.
+Stremio. For a mixed-provider reliability test, copy providers.example.json to a local
+providers.json and configure two independently named endpoints (one advertising
+IMDb search and another advertising title q). Set PROVIDERS_FILE=providers.json;
+the file replaces the single TORZNAB_URL endpoint. Reference API keys by exported
+environment variable names. Use public/legal test content.
+
+Set CINEMETA_ENABLED=true to exercise optional title/year lookup. This sends
+requested IMDb IDs/media types to Cinemeta when a title is needed. No metadata API
+key is required. You can leave it false for an IMDb-only privacy-preserving path.
 
 Export a trusted local `.env` file in a POSIX shell:
 
@@ -45,8 +51,12 @@ self-debrid search series "$EPISODE_ID"
 ```
 
 Check that discovery returns matching candidates with supported v1 hashes.
-If it returns `unsupported_search`, use an IMDb-capable indexer for the addon.
-The CLI may work with `--title` while the addon cannot search that endpoint.
+Run self-debrid doctor movie "$MOVIE_ID" and self-debrid doctor series "$EPISODE_ID".
+Verify endpoint status, advertised parameters, metadata status, safe error codes,
+application exclusions and compatibility counts. No private endpoints, candidate
+locators or keys should appear. An unsupported_search code means the advertised
+queries cannot execute without missing/disabled/unavailable title metadata.
+The CLI --title path remains available if metadata is disabled or unavailable.
 A `.torrent` download locator without an info hash is valid discovery data but
 will not appear in Stremio; this phase does not download metadata to extract it.
 
@@ -72,7 +82,7 @@ Expected observations:
 
 - Health is HTTP 200 JSON with status `ok`; it does not check indexer health.
 - Manifest is HTTP 200 JSON, addon ID `com.selfdebrid.addon`, version
-  `2.0.0-dev.1`, movie/series stream resource only, empty catalogs and no config UI.
+  `2.0.0-dev.2`, movie/series stream resource only, empty catalogs and no config UI.
 - Responses have `Access-Control-Allow-Origin: *` and `Cache-Control: no-store`.
 - Stream resources are HTTP 200 with a `streams` array. With available eligible
   results it is nonempty; empty is valid for unavailable/filtered/failed searches.
@@ -87,6 +97,24 @@ without an explicit usable index and matching episode mapping must be absent.
 A single exact named episode may appear without `fileIdx`: its description must
 state that Stremio selects the largest file. This is a limited fallback and can
 still select the wrong file if the torrent contents contradict its name.
+
+### Mixed providers, cache and failure observations
+
+Repeat the same movie and episode requests within 30 seconds: identical requests
+should reuse discovery work, without a cached/debrid badge or local file promise.
+Restart after changing configuration; no persistent cache is kept. During controlled
+operator testing, make one provider unavailable and repeat after the short TTL
+(or restart). Healthy providers should still return candidates; doctor should show
+the failing provider's safe code. Do not publish private service logs to demonstrate
+this behavior. Restore the provider and retry: failure-bearing discovery results
+must not have been retained as successful snapshots.
+
+To compare title fallback, run doctor with Cinemeta enabled and disabled, restarting
+the process between settings. IMDb providers should work in both modes. A title-only
+provider should work with enabled valid metadata or explicit CLI --title. A metadata
+outage must not discard IMDb results. Negative metadata lookups may be retained for
+30 seconds. Inspect exclusions for remakes, different titles and incompatible
+season-pack results; empty arrays alone do not establish the cause.
 
 ## 3. Install in Stremio Desktop and try playback
 
