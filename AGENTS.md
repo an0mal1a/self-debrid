@@ -16,13 +16,15 @@ adapter is future work. Neither client owns core discovery or download logic.
 
 ## Current scope
 
-Standalone packaging and the Torznab discovery slice are implemented. Domain,
-ranking, metadata parsing and deduplication are pure; SearchService orchestrates
-the provider registry and ranking. Only adapter helpers exist for Stremio.
+Standalone packaging, Torznab discovery and the Phase 2 native Stremio HTTP addon
+are implemented. Domain/ranking/metadata/deduplication and episode evidence remain
+pure. SearchService owns orchestration and episode filtering before deduplication.
+The aiohttp adapter translates requests and serializes native torrent streams.
 
-Stop at the discovery phase until the Lead Developer authorizes integration.
-Do not add Torrentio, downloading, qBittorrent playback, JDownloader, HTTP Range
-streaming, Stremio HTTP/configure UI, SQLite, Docker or a Kodi adapter in this phase.
+The Lead Developer authorized native Stremio integration in Phase 2. Stop after
+that phase. Do not begin Phase 3 or add Torrentio, torrent downloading, qBittorrent
+playback, JDownloader, local HTTP Range streaming, configure UI, SQLite, Docker,
+a frontend/custom player, or a Kodi adapter.
 
 ## Architecture invariants
 
@@ -31,7 +33,9 @@ streaming, Stremio HTTP/configure UI, SQLite, Docker or a Kodi adapter in this p
 2. Providers implement `Provider` and return immutable normalized `StreamCandidate`
    objects. Provider-specific transport/configuration stays outside the domain.
 3. Hash identity is canonical hash plus known file index. Unknown selection
-   remains torrent-level. Never infer a file index or use "largest file" selection.
+   remains torrent-level. Never infer a file index. The adapter may emit a single
+   clearly named episode without an index, explicitly describing Stremio's
+   largest-file fallback. This is not verified file selection or local playback.
 4. Pure ranking/deduplication must be deterministic, including tie-breaking and
    conflicting metadata. Never mutate candidates or perform I/O there.
 5. Missing metadata stays unknown. No broad language guesses from substrings.
@@ -44,7 +48,15 @@ streaming, Stremio HTTP/configure UI, SQLite, Docker or a Kodi adapter in this p
 9. Never log API keys, download URLs, raw network exceptions or remote XML error
    descriptions. `ProviderError` messages must be safe for user diagnostics.
 10. Configuration is read explicitly at the application boundary, not on import.
-11. Keep runtime dependencies minimal. SQLite comes later; no PostgreSQL, Redis,
+11. Bad feed items must not discard good items. Bound diagnostics to one summary
+    per feed and at most five item positions, without remote titles/URLs/errors.
+12. Torrent locators are not HTTP video URLs. Emit only supported v1 hash streams;
+    do not serialize provider URLs, trackers, API keys or v2-only hashes.
+13. Series candidates need matching episode evidence. Packs require both a known
+    usable index and an exact upstream episode mapping; obvious mismatches fail.
+14. Bind HTTP to loopback by default; LAN access is explicit. Preserve CORS and
+    sanitized JSON errors and disable raw request access logs.
+15. Keep runtime dependencies minimal. SQLite comes later; no PostgreSQL, Redis,
     Celery or dependency injection framework is needed.
 
 ## Code quality and validation

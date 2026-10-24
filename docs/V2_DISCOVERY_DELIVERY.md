@@ -1,5 +1,9 @@
 # Standalone v2 discovery delivery
 
+Historical report for accepted commit 83d44df. Phase 2 subsequently changes item
+recovery, locator recognition and episode safety and adds native Stremio HTTP.
+Use the current README/architecture and STREMIO_SMOKE_TEST.md for current behavior.
+
 ## Scope and branch safety
 
 Implemented only on `v2-development` in a separate worktree because the original

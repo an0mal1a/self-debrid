@@ -195,3 +195,22 @@ class SearchServiceTests(unittest.IsolatedAsyncioTestCase):
         first = await SearchService(ProviderRegistry([a, b])).search(REQUEST)
         second = await SearchService(ProviderRegistry([b, a])).search(REQUEST)
         self.assertEqual(first, second)
+
+
+class EpisodeSearchTests(unittest.IsolatedAsyncioTestCase):
+    async def test_filtering_happens_before_duplicate_metadata_can_mask_mismatch(self):
+        good = StreamCandidate("good", "Show.S02E05", info_hash="a" * 40, file_index=2)
+        wrong = replace(
+            good, provider="wrong", title="Show.S02E06", cached=True, seeders=999
+        )
+        pack = StreamCandidate("good", "Show.S02.Complete", info_hash="b" * 40)
+        registry = ProviderRegistry(
+            [
+                StubProvider("good", lambda request: [good, pack]),
+                StubProvider("wrong", lambda request: [wrong]),
+            ]
+        )
+        result = await SearchService(registry).search(
+            MediaRequest(MediaType.SERIES, "tt123", 2, 5)
+        )
+        self.assertEqual(result.candidates, (good,))

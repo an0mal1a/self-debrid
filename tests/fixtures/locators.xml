@@ -1,0 +1,11 @@
+<rss xmlns:t="http://torznab.com/schemas/2015/feed"><channel>
+<item><title>Details with hash</title><link>https://tracker.invalid/details/1?passkey=private-key</link><t:attr name="infohash" value="1111111111111111111111111111111111111111"/></item>
+<item><title>Details only</title><link>https://tracker.invalid/details.php?id=2&amp;passkey=private-key</link></item>
+<item><title>Typed enclosure</title><link>https://tracker.invalid/details/3</link><enclosure url="https://tracker.invalid/opaque?id=3&amp;apikey=private-key" type="application/x-bittorrent" length="4000"/></item>
+<item><title>Prowlarr download</title><link>https://prowlarr.invalid/api/v1/indexer/1/download?link=opaque&amp;apikey=private-key</link></item>
+<item><title>Jackett download</title><link>https://jackett.invalid/dl/indexer/opaque?jackett_apikey=private-key</link></item>
+<item><title>Torznab get</title><link>https://indexer.invalid/api?t=get&amp;id=6&amp;apikey=private-key</link></item>
+<item><title>Torrent file</title><link>https://tracker.invalid/files/release.torrent?passkey=private-key</link></item>
+<item><title>Magnet attr</title><link>https://tracker.invalid/details/8</link><t:attr name="magneturl" value="magnet:?xt=urn:btih:8888888888888888888888888888888888888888&amp;tr=https%3A%2F%2Ftracker.invalid%2Fannounce%3Fpasskey%3Dprivate-key"/></item>
+<item><title>Unverified enclosure</title><enclosure url="https://tracker.invalid/details/9" type="text/html"/></item>
+</channel></rss>

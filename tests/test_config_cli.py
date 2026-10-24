@@ -94,7 +94,7 @@ class CliTests(unittest.TestCase):
     def test_help_and_version_do_not_need_configuration(self):
         for args, expected in (
             (["--help"], "discovery CLI"),
-            (["--version"], "2.0.0.dev0"),
+            (["--version"], "2.0.0.dev1"),
         ):
             output = StringIO()
             with redirect_stdout(output), self.assertRaises(SystemExit) as caught:
@@ -175,3 +175,87 @@ class CliTests(unittest.TestCase):
                 ):
                     main(args)
                 self.assertEqual(caught.exception.code, 2)
+
+
+class ServerConfigCliTests(unittest.TestCase):
+    def test_server_defaults_and_explicit_lan_configuration(self):
+        config = AppConfig.from_env({"TORZNAB_URL": "http://host/api"})
+        self.assertEqual((config.server.host, config.server.port), ("127.0.0.1", 8080))
+        self.assertEqual(
+            config.server.manifest_url, "http://127.0.0.1:8080/manifest.json"
+        )
+        config = AppConfig.from_env(
+            {
+                "TORZNAB_URL": "http://host/api",
+                "HTTP_HOST": "0.0.0.0",
+                "HTTP_PORT": "9090",
+                "PUBLIC_ADDON_URL": "https://addon.invalid/prefix/",
+            }
+        )
+        self.assertEqual(config.server.host, "0.0.0.0")
+        self.assertEqual(
+            config.server.manifest_url, "https://addon.invalid/prefix/manifest.json"
+        )
+
+    def test_invalid_server_settings_are_sanitized(self):
+        from self_debrid.infrastructure.config import ServerSettings
+
+        for values in (
+            {"host": "https://key@host"},
+            {"port": 0},
+            {"port": 65536},
+            {"port": True},
+            {"public_base_url": "https://host/?apikey=private-key"},
+            {"public_base_url": "https://user:private-key@host"},
+            {"public_base_url": "https://[bad"},
+            {"public_base_url": "https://host:99999"},
+        ):
+            with self.subTest(values=values), self.assertRaises(ValueError) as captured:
+                ServerSettings(**values)
+            self.assertNotIn("private-key", str(captured.exception))
+        self.assertEqual(
+            ServerSettings(host="::1").manifest_url, "http://[::1]:8080/manifest.json"
+        )
+
+    def test_serve_command_honors_cli_over_environment_without_printing_secrets(self):
+        output = StringIO()
+        with (
+            patch.dict(
+                "os.environ",
+                {
+                    "TORZNAB_URL": "http://host/api",
+                    "TORZNAB_API_KEY": "private-key",
+                    "HTTP_HOST": "0.0.0.0",
+                    "HTTP_PORT": "9090",
+                },
+                clear=True,
+            ),
+            patch("self_debrid.__main__.serve") as serve,
+            redirect_stdout(output),
+        ):
+            self.assertEqual(
+                main(["serve", "--host", "127.0.0.1", "--port", "8080"]), 0
+            )
+        self.assertEqual(serve.call_args.kwargs, {"host": "127.0.0.1", "port": 8080})
+        self.assertIn("http://127.0.0.1:8080/manifest.json", output.getvalue())
+        self.assertNotIn("private-key", output.getvalue())
+
+    def test_serve_help_does_not_require_provider_configuration(self):
+        with (
+            patch.dict("os.environ", {}, clear=True),
+            redirect_stdout(StringIO()),
+            self.assertRaises(SystemExit) as captured,
+        ):
+            main(["serve", "--help"])
+        self.assertEqual(captured.exception.code, 0)
+
+    def test_serve_invalid_config_fails_before_startup(self):
+        with (
+            patch.dict("os.environ", {"TORZNAB_URL": "http://host/api"}, clear=True),
+            patch("self_debrid.__main__.serve") as serve,
+            redirect_stderr(StringIO()),
+            self.assertRaises(SystemExit) as captured,
+        ):
+            main(["serve", "--port", "0"])
+        self.assertEqual(captured.exception.code, 2)
+        serve.assert_not_called()

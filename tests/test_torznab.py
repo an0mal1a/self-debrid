@@ -226,9 +226,12 @@ class XmlTests(unittest.TestCase):
             + "</link>"
             '<t:attr name="infohash" value="' + "b" * 40 + '"/></item>',
         ):
-            with self.assertRaises(ProviderError) as caught:
-                parse_results(rss(item), "test")
-            self.assertEqual(caught.exception.code, "invalid_item")
+            with self.assertLogs(
+                "self_debrid.providers.torznab", level="WARNING"
+            ) as captured:
+                self.assertEqual(parse_results(rss(item), "test"), ())
+            self.assertEqual(captured.records[0].skipped_items, 1)
+            self.assertEqual(captured.records[0].item_positions, (1,))
 
     def test_response_size_limit(self):
         with self.assertRaises(ProviderError) as caught:
@@ -390,3 +393,86 @@ class ProviderTests(unittest.IsolatedAsyncioTestCase):
         ):
             await self.provider._fetch({"t": "caps"})
         self.assertEqual(caught.exception.code, "response_too_large")
+
+
+class PartialFeedTests(unittest.TestCase):
+    def test_mixed_valid_invalid_items_preserve_usable_results(self):
+        with self.assertLogs("self_debrid.providers.torznab", "WARNING") as captured:
+            candidates = parse_results(fixture("mixed_items.xml"), "fixture")
+        self.assertEqual(len(candidates), 3)
+        self.assertEqual(candidates[0].info_hash, "1" * 40)
+        self.assertEqual(candidates[1].file_index, 2)
+        self.assertIsNone(candidates[2].info_hash)
+        self.assertEqual(len(captured.records), 1)
+        self.assertEqual(captured.records[0].skipped_items, 4)
+        self.assertEqual(captured.records[0].item_positions, (2, 3, 4, 6))
+        for value in ("private-key", "https://", "magnet:", "Contradictory"):
+            self.assertNotIn(value, repr(captured.output))
+
+    def test_diagnostics_are_bounded_for_many_bad_items(self):
+        from self_debrid.providers.torznab import MAX_ITEM_DIAGNOSTICS
+
+        data = rss(
+            "<item><title>https://private.invalid/?apikey=secret</title></item>" * 100
+        )
+        with self.assertLogs("self_debrid.providers.torznab", "WARNING") as captured:
+            self.assertEqual(parse_results(data, "private-api-key"), ())
+        self.assertEqual(len(captured.records), 1)
+        self.assertEqual(captured.records[0].skipped_items, 100)
+        self.assertEqual(len(captured.records[0].item_positions), MAX_ITEM_DIAGNOSTICS)
+        self.assertLess(len(captured.output[0]), 200)
+        self.assertNotIn("secret", captured.output[0])
+        self.assertNotIn("private", captured.output[0])
+
+    def test_detail_links_are_not_torrent_locators(self):
+        with self.assertLogs("self_debrid.providers.torznab", "WARNING") as captured:
+            values = parse_results(fixture("locators.xml"), "fixture")
+        self.assertEqual(len(values), 7)
+        self.assertIsNone(values[0].url)
+        self.assertEqual(values[0].info_hash, "1" * 40)
+        self.assertIn("/opaque?", values[1].url)
+        self.assertIn("/indexer/1/download?", values[2].url)
+        self.assertIn("/dl/indexer/", values[3].url)
+        self.assertIn("t=get", values[4].url)
+        self.assertIn(".torrent?", values[5].url)
+        self.assertTrue(values[6].url.startswith("magnet:"))
+        self.assertEqual(captured.records[0].skipped_items, 2)
+        self.assertTrue(all("/details" not in (value.url or "") for value in values))
+
+    def test_magnet_link_preserves_selection_ahead_of_http_enclosure(self):
+        data = rss(
+            "<item><title>Show.S02E05</title><link>magnet:?xt=urn:btih:"
+            + "a" * 40
+            + "&amp;so=5</link>"
+            '<enclosure url="https://tracker.invalid/download/1" type="application/x-bittorrent"/></item>'
+        )
+        value = parse_results(data, "fixture")[0]
+        self.assertEqual(value.file_index, 5)
+        self.assertTrue(value.url.startswith("magnet:"))
+
+    def test_http_detail_page_in_magnet_attribute_is_not_trusted(self):
+        data = rss(
+            '<item><title>Release</title><t:attr name="infohash" value="'
+            + "a" * 40
+            + '"/>'
+            '<t:attr name="magneturl" value="https://tracker.invalid/details/1?apikey=private-key"/></item>'
+        )
+        self.assertIsNone(parse_results(data, "fixture")[0].url)
+
+    def test_item_error_is_recoverable_but_document_auth_error_is_fatal(self):
+        good = (
+            '<item><title>Good</title><t:attr name="infohash" value="'
+            + "a" * 40
+            + '"/></item>'
+        )
+        bad = '<item><error code="201" description="apikey=private-key"/></item>'
+        with self.assertLogs("self_debrid.providers.torznab", "WARNING") as captured:
+            values = parse_results(rss(bad + good), "fixture")
+        self.assertEqual(len(values), 1)
+        self.assertEqual(captured.records[0].skipped_items, 1)
+        self.assertNotIn("private-key", repr(captured.output))
+        with self.assertRaises(ProviderError) as caught:
+            parse_results(
+                rss('<error code="100" description="private-key"/>' + good), "fixture"
+            )
+        self.assertEqual(caught.exception.code, "torznab_error")

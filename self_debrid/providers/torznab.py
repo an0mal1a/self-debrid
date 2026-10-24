@@ -3,10 +3,11 @@
 from __future__ import annotations
 
 import asyncio
+import logging
 import math
 import re
 from dataclasses import dataclass
-from urllib.parse import urlsplit
+from urllib.parse import parse_qs, urlsplit
 from xml.etree.ElementTree import Element, ParseError
 
 import aiohttp
@@ -24,6 +25,35 @@ from self_debrid.providers.base import ProviderError
 
 MAX_XML_BYTES = 2 * 1024 * 1024
 TORZNAB_NAMESPACE = "http://torznab.com/schemas/2015/feed"
+MAX_ITEM_DIAGNOSTICS = 5
+logger = logging.getLogger(__name__)
+
+
+def is_torrent_download_url(url: str) -> bool:
+    """Recognize common download endpoints, without fetching or trusting page links."""
+    try:
+        parts = urlsplit(normalize_url(url))
+    except ValueError:
+        return False
+    if parts.scheme == "magnet":
+        try:
+            return magnet_info_hash(url) is not None
+        except ValueError:
+            return False
+    path = parts.path.lower().rstrip("/")
+    query = parse_qs(parts.query)
+    if path.endswith(".torrent"):
+        return True
+    if re.search(r"/(?:download(?:\.php)?|get)(?:/[^/]+)?$", path):
+        return True
+    # Torznab t=get and Jackett's download proxy have recognizable routes.
+    return (
+        query.get("t") == ["get"]
+        and bool(query.get("id"))
+        or "/dl/" in path
+        or query.get("action") == ["download"]
+        and bool(query.get("id"))
+    )
 
 
 @dataclass(frozen=True, slots=True)
@@ -48,7 +78,18 @@ def _parse_xml(data: bytes) -> Element:
         raise ProviderError(
             "invalid_xml", "Torznab returned malformed or unsafe XML"
         ) from None
-    error = next((node for node in root.iter() if _local_name(node) == "error"), None)
+    # Document errors are fatal; an error nested inside an RSS item belongs to
+    # that item and must not discard other releases.
+    pending = [root]
+    error = None
+    while pending:
+        node = pending.pop()
+        if _local_name(node) == "item":
+            continue
+        if _local_name(node) == "error":
+            error = node
+            break
+        pending.extend(node)
     if error is not None:
         code = error.get("code", "")
         suffix = f" (code {code})" if re.fullmatch(r"[0-9]{1,4}", code) else ""
@@ -116,23 +157,36 @@ def build_search_params(
 
 
 def _item_urls(item: Element, attrs: dict[str, list[str]]) -> list[str]:
-    magnets = list(attrs.get("magneturl", []))
+    magnets = [
+        url
+        for url in attrs.get("magneturl", [])
+        if url.strip().lower().startswith("magnet:")
+    ]
     enclosures = []
     links = []
     for node in item:
         name = _local_name(node)
-        if name == "enclosure" and node.get("type") in (
-            None,
-            "application/x-bittorrent",
-            "application/x-torrent",
-            "application/x-magnet",
-        ):
-            enclosures.append(node.get("url", ""))
-        elif name == "link":
-            links.append(node.text or "")
+        if name == "enclosure":
+            url = node.get("url", "")
+            if url.strip().lower().startswith("magnet:") and is_torrent_download_url(
+                url
+            ):
+                magnets.append(url)
+            elif node.get("type", "").lower() in (
+                "application/x-bittorrent",
+                "application/x-torrent",
+                "application/x-magnet",
+            ) or is_torrent_download_url(url):
+                enclosures.append(url)
+        elif name == "link" and is_torrent_download_url(node.text or ""):
+            if node.text.strip().lower().startswith("magnet:"):
+                magnets.append(node.text)
+            else:
+                links.append(node.text)
         elif name == "guid" and (node.text or "").strip().lower().startswith("magnet:"):
             magnets.append(node.text.strip())
-    # An enclosure is a download locator; an ordinary link may be a detail page.
+    # Typed torrent enclosures and recognized download routes are locators, not
+    # video streams. Plain details links are intentionally not retained.
     urls = []
     for url in magnets + enclosures + links:
         try:
@@ -146,6 +200,8 @@ def _item_urls(item: Element, attrs: dict[str, list[str]]) -> list[str]:
 
 
 def _parse_item(item: Element, provider: str) -> StreamCandidate:
+    if any(_local_name(node) == "error" for node in item):
+        raise ProviderError("invalid_item", "Torznab item contains an error")
     attrs: dict[str, list[str]] = {}
     for node in item:
         if node.tag == f"{{{TORZNAB_NAMESPACE}}}attr" and node.get("name"):
@@ -189,6 +245,7 @@ def _parse_item(item: Element, provider: str) -> StreamCandidate:
                 value
                 for node in item
                 if _local_name(node) == "enclosure"
+                and node.get("url") in urls
                 and (value := nonnegative_integer(node.get("length"))) is not None
             ),
             None,
@@ -220,12 +277,36 @@ def parse_results(data: bytes, provider: str) -> tuple[StreamCandidate, ...]:
     channels = [node for node in root if _local_name(node) == "channel"]
     if _local_name(root) != "rss" or not channels:
         raise ProviderError("invalid_response", "Expected a Torznab RSS channel")
-    return tuple(
-        _parse_item(item, provider)
-        for channel in channels
-        for item in channel
-        if _local_name(item) == "item"
-    )
+    candidates = []
+    skipped = 0
+    positions = []
+    for position, item in enumerate(
+        (
+            item
+            for channel in channels
+            for item in channel
+            if _local_name(item) == "item"
+        ),
+        1,
+    ):
+        try:
+            candidates.append(_parse_item(item, provider))
+        except ProviderError as exc:
+            if exc.code != "invalid_item":
+                raise
+            skipped += 1
+            if len(positions) < MAX_ITEM_DIAGNOSTICS:
+                positions.append(position)
+    if skipped:
+        # One bounded summary per feed; no provider names, item titles, raw errors
+        # or URLs can enter diagnostics, even when the feed echoes credentials.
+        logger.warning(
+            "Torznab skipped %d invalid items; first item positions: %s",
+            skipped,
+            positions,
+            extra={"skipped_items": skipped, "item_positions": tuple(positions)},
+        )
+    return tuple(candidates)
 
 
 class TorznabProvider:

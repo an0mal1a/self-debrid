@@ -6,6 +6,8 @@ import re
 from dataclasses import dataclass
 from typing import Mapping
 
+from self_debrid.domain.episode_selection import is_ambiguous_episode_name
+
 
 @dataclass(frozen=True, slots=True)
 class ReleaseMetadata:
@@ -84,7 +86,9 @@ def parse_release(
     episode_match = _label(r"s([0-9]{1,2})e([0-9]{1,3})", title)
     season = nonnegative_integer(attributes.get("season"))
     episode = nonnegative_integer(attributes.get("episode"))
-    if episode_match:
+    # A range/pack's first episode is not a mapping from file index to episode.
+    # For ambiguous names, preserve only explicit upstream coordinates.
+    if episode_match and not is_ambiguous_episode_name(title):
         season = season if season is not None else int(episode_match[1])
         episode = episode if episode is not None else int(episode_match[2])
     return ReleaseMetadata(

@@ -1,0 +1,9 @@
+<rss xmlns:torznab="http://torznab.com/schemas/2015/feed"><channel>
+<item><title>Example.Movie.1080p.English</title><torznab:attr name="infohash" value="1111111111111111111111111111111111111111"/></item>
+<item><link>https://tracker.invalid/download?id=2&amp;apikey=private-key</link></item>
+<item><title>https://tracker.invalid/details?apikey=private-key</title><link>https://tracker.invalid/details/3?apikey=private-key</link></item>
+<item><title>Contradictory identity</title><torznab:attr name="infohash" value="2222222222222222222222222222222222222222"/><torznab:attr name="magneturl" value="magnet:?xt=urn:btih:3333333333333333333333333333333333333333"/></item>
+<item><title>Example.Show.S02E05.720p.x264</title><torznab:attr name="magneturl" value="magnet:?xt=urn:btih:4444444444444444444444444444444444444444&amp;so=2&amp;tr=https%3A%2F%2Ftracker.invalid%2Fannounce%3Fpasskey%3Dprivate-key"/></item>
+<item><title>Broken URL</title><link>https://[invalid</link></item>
+<item><title>Download only</title><enclosure url="https://tracker.invalid/opaque?apikey=private-key" type="application/x-bittorrent" length="1000"/></item>
+</channel></rss>

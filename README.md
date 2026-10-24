@@ -5,8 +5,10 @@ media discovery, download, cache and streaming engine. Its core accepts movie or
 episode requests, aggregates discovery providers, and returns normalized, ranked
 release candidates with structured provider failures.
 
-**Current implementation: discovery only.** There is no HTTP server, torrent
-downloading or playback yet. Stremio playback does not work in this phase.
+**Implemented: discovery and a native Stremio torrent addon.** The aiohttp server
+returns ranked BitTorrent v1 hash streams for Stremio to play with its own torrent
+engine. Self-Debrid does not download torrents or serve local video bytes.
+Live Stremio playback and real Prowlarr integration have not been verified.
 
 ## v1 and v2 are separate applications
 
@@ -18,14 +20,18 @@ downloading or playback yet. Stremio playback does not work in this phase.
 
 v1 resolves links discovered by a Kodi addon. v2 takes responsibility for source
 discovery and will eventually own file selection, downloading, caching and
-streaming. Native Stremio integration is the next direction; a new Kodi adapter
+streaming. A native Stremio HTTP adapter is implemented; a new Kodi adapter
 will follow later. v2 does not preserve the v1 API or its configuration.
 
 ## Implemented
 
 - Validated movie/episode `MediaRequest` and immutable `StreamCandidate` models.
-- Stremio IMDb ID parsing (`tt1234567` and `tt1234567:2:5`) and a manifest helper;
-  these are protocol utilities, not an installable Stremio addon.
+- Stream-only Stremio manifest and movie/series HTTP resources using IMDb IDs
+  (`tt1234567` and `tt1234567:2:5`), plus `/health` liveness.
+- Pure Stremio serialization of supported v1 torrent hashes and reliable file
+  indices, with useful release metadata and no download URL passthrough.
+- Conservative episode filtering before deduplication; ambiguous packs require
+  an explicit index and a matching episode mapping.
 - Async provider registry with bounded concurrency, per-provider timeouts,
   cancellation propagation and structured failures.
 - `SearchService`: provider aggregation, normalization, metadata-preserving
@@ -33,13 +39,16 @@ will follow later. v2 does not preserve the v1 API or its configuration.
 - Async Torznab discovery, including per-indexer Prowlarr Torznab endpoints.
 - Capability discovery and conservative title-based fallback.
 - Safe XML parsing, bounded response sizes, explicit connection/read timeouts.
+- Partial-item recovery: good RSS items survive bad items; one sanitized summary
+  records the skipped count and at most five item positions per feed.
+- Recognized torrent locators are retained separately from unverified details links.
 - Explicit release labels for resolution, codecs, HDR, languages and episodes;
   optional size and seed metadata from the feed.
 - CLI, environment configuration and offline `unittest` coverage.
 
-Planned: native Stremio HTTP integration, exact torrent file selection,
-qBittorrent playback sessions and HTTP Range streaming, SQLite persistence, then
-Kodi support. Additional discovery providers can implement the existing
+Not implemented: qBittorrent-based local playback, local HTTP/Range streaming,
+cache persistence, configure UI, torrent metadata retrieval/exact file verification,
+and the Kodi adapter. Additional discovery providers can implement the existing
 `Provider` protocol; only Torznab is implemented. Torrentio, JDownloader, Docker
 and client configuration UI are outside this phase.
 
@@ -61,7 +70,8 @@ On Windows, activate with `.venv\Scripts\Activate.ps1` in PowerShell.
 
 Runtime dependencies are `aiohttp>=3.10,<4` (cancellable async HTTP) and
 `defusedxml>=0.7.1,<1` (XML safety). Dependencies are declared in `pyproject.toml`.
-`unittest` is included in Python. There is no web framework or database dependency.
+`unittest` is included in Python. The server uses the existing `aiohttp.web`;
+no additional runtime dependency, web framework or database was added in Phase 2.
 
 ## Configuration and CLI
 
@@ -85,6 +95,9 @@ Never commit your API key or a URL containing one.
 
 | Variable | Default | Meaning |
 | --- | --- | --- |
+| `HTTP_HOST` | `127.0.0.1` | HTTP bind host; use `0.0.0.0` explicitly for LAN access |
+| `HTTP_PORT` | `8080` | HTTP port, 1–65535 |
+| `PUBLIC_ADDON_URL` | empty | Optional advertised base URL; used only for the startup installation address |
 | `TORZNAB_URL` | required | Complete per-indexer Torznab endpoint, without query parameters |
 | `TORZNAB_API_KEY` | empty | API key, sent as an encoded Torznab query parameter |
 | `TORZNAB_NAME` | `prowlarr` | Stable provider identifier |
@@ -101,7 +114,7 @@ The CLI configures one Torznab endpoint. Library users can register several name
 providers with `ProviderRegistry` and call `await SearchService(registry).search(request)`.
 Configuration is read at the CLI boundary, never during imports or inside the domain.
 
-Output is JSON containing ordered candidates and failures. Download URLs are
+The discovery `search` command still returns JSON containing ordered candidates and failures. Download URLs are
 omitted from CLI output because they may include credentials; library results
 retain them. Exit status is `0` for success (including no matches or partial
 success), `1` for provider failures without any eligible candidates, and `2` for
@@ -144,6 +157,76 @@ Capabilities are retained for the lifetime of a provider instance. Only the
 indexer's first/default result page is fetched. There are no retries or HTML
 scrapers. HTTP redirects are rejected to avoid forwarding API keys.
 
+Stremio normally supplies only an IMDb ID and episode coordinates. This phase has
+no title lookup: an endpoint lacking the necessary IMDb search capability may
+return no Stremio results, even though the discovery CLI works with `--title`.
+
+## Native Stremio installation
+
+After exporting the configuration above:
+
+```sh
+self-debrid serve --host 127.0.0.1 --port 8080
+# Equivalent: python -m self_debrid serve --host 127.0.0.1 --port 8080
+```
+
+On the same machine, open Stremio Desktop's Addons view, paste
+`http://127.0.0.1:8080/manifest.json` into the addon URL/search field, and confirm
+installation. Open a movie or episode from an existing IMDb catalog and inspect
+its Self-Debrid results. There is no landing page or configure UI.
+
+For LAN access, run `self-debrid serve --host 0.0.0.0 --port 8080`. Use the server's
+actual LAN address (for example `192.168.1.50`), not `0.0.0.0` or another device's
+`127.0.0.1`. You can check reachability at `http://192.168.1.50:8080/health`.
+
+The [Stremio SDK testing guide](https://github.com/Stremio/stremio-addon-sdk/blob/master/docs/testing.md)
+documents HTTPS for addon URLs other than `127.0.0.1`. For LAN/remote clients that
+reject HTTP or mixed content, put a trusted HTTPS reverse proxy in front of the
+server and install its `https://.../manifest.json` address. Forward the same paths
+and CORS headers. An optional `PUBLIC_ADDON_URL=https://addon.example.invalid`
+changes only the printed installation address; it does not enable TLS or rewrite
+routes. For a proxy path prefix, the proxy must strip it before forwarding.
+This phase supplies no public hosting or authentication system.
+
+Use a client with a native torrent engine (such as desktop) for the initial
+playback smoke test; a browser alone is not evidence of native torrent playback.
+No trackers, passkeys, magnet URIs or torrent download URLs are sent to Stremio.
+Private trackers requiring authenticated announce URLs are not supported by this
+hash-only handoff. Public peer availability and client codec/platform support
+still determine whether playback starts. See the exact
+[real-client smoke test](docs/STREMIO_SMOKE_TEST.md).
+
+### HTTP contract and file selection
+
+- `GET /manifest.json`: stable ID `com.selfdebrid.addon`, version `2.0.0-dev.1`,
+  movie/series streams only; no catalogs, metadata or configuration resources.
+- `GET /stream/movie/tt1234567.json`: ranked native torrent streams.
+- `GET /stream/series/tt1234567:2:5.json`: conservatively matched episode streams.
+- `GET /health`: local process liveness, without contacting providers.
+
+Successful searches return `{"streams": [...]}` with JSON and CORS headers.
+Empty results and provider failures are represented by `{"streams": []}` with HTTP
+200; healthy providers' results survive other failures. Invalid IDs return a
+sanitized HTTP 400 JSON error. There is no provider failure text in responses.
+The registry bounds each active provider; with N providers and concurrency C,
+the upper search budget is roughly ceil(N/C) provider timeouts plus cleanup.
+Raw HTTP access logs are disabled by the `serve` command.
+
+Only 40-character BitTorrent v1 hashes are serialized as `infoHash`. Base32 v1
+and hybrid magnets normalize correctly. V2-only SHA-256 hashes are retained for
+discovery but excluded from Stremio output. `fileIdx` is emitted only when known
+and within the current Stremio core's supported range (0–65535).
+
+A known index alone does not identify an episode. A pack needs both a known index
+and a matching upstream season/episode mapping. Obvious contradictory episode
+names/attributes are rejected. Without an index, only a single exact SxxExxx
+release name with no season-pack, complete, collection, or multi-episode/range
+markers is accepted. **Stremio then selects the largest torrent file**; the stream
+description says so. This fallback is evidence from naming, not verified file
+selection: misleading names, samples, extras or multiple versions can still pick
+the wrong file. Movies without an index use the same largest-file behavior.
+Exact torrent metadata inspection belongs to Phase 3.
+
 ## Identity, metadata and ranking
 
 v1 torrent hashes normalize from 40-character hex, 32-character base32, URNs or
@@ -167,13 +250,15 @@ Torznab does not claim that any result is cached.
 ## Tests and package validation
 
 All fixtures are synthetic. Tests do not need Prowlarr, Stremio, qBittorrent or
-external network access.
+external network access. HTTP contract tests use aiohttp test utilities on
+loopback with mocked discovery providers/transport; they do not contact real services.
 
 ```sh
 python -m unittest discover -s tests -v
 python -c 'import self_debrid; from self_debrid.application.search import SearchService'
 python -m self_debrid --help
 self-debrid --version
+self-debrid serve --help
 ```
 
 To build distribution artifacts:

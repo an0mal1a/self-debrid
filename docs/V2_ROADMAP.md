@@ -25,17 +25,30 @@ live Prowlarr validation remains an integration follow-up.
 
 Exit condition: a movie or episode request returns ranked discovery candidates
 without downloading anything. Lead Developer review is required before starting
-the next implementation phase. Draft PR #2 stays open and unmerged.
+the next implementation phase. The Lead Developer accepted this foundation at
+83d44df and authorized Phase 2. Draft PR #2 stays open and unmerged.
 
-## Phase 2 — Native Stremio integration (not implemented)
+## Phase 2 — Native Stremio addon
 
-- HTTP manifest and movie/series stream routes.
-- Readable result names/descriptions.
-- Configuration UI and installation flow.
-- Public/local base URL handling.
+Status: implemented and validated offline; awaiting real Prowlarr/Stremio smoke
+validation and Lead Developer review. No local playback compatibility is claimed.
 
-Discovery integration must not imply playable local torrents before the playback
-engine exists. Define the handoff explicitly during the phase design review.
+- Recoverable malformed RSS items with bounded safe diagnostics.
+- Conservative torrent locator recognition; details pages are not download URLs.
+- Episode evidence filtering before deduplication; safe pack/file handling.
+- aiohttp manifest, movie/series stream and liveness routes, JSON/CORS responses.
+- Pure native v1 torrent serialization, explicit fileIdx when usable, no URL or
+  tracker passthrough; v2-only hashes are excluded.
+- Loopback defaults, explicit LAN binding, optional advertised public base URL.
+- `self-debrid serve`, existing discovery CLI, offline HTTP/pipeline tests.
+- Installation guide and [real smoke procedure](STREMIO_SMOKE_TEST.md).
+
+The handoff uses Stremio's native torrent engine. A standalone episode with no
+index can use Stremio's largest-file fallback only under the documented naming
+policy. Self-Debrid does not select, download or serve the file. Packs require a
+known index and matching upstream episode mapping. Configure UI is deferred.
+
+Stop here for Lead Developer review; do not start Phase 3.
 
 ## Phase 3 — Torrent playback engine (not implemented)
 

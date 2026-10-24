@@ -7,12 +7,12 @@ import re
 from self_debrid.domain import MediaRequest, MediaType
 
 
-def build_manifest(version: str = "2.0.0-dev") -> dict:
+def build_manifest(version: str = "2.0.0-dev.1") -> dict:
     return {
         "id": "com.selfdebrid.addon",
         "version": version,
         "name": "Self-Debrid",
-        "description": "Self-hosted discovery, cache and streaming engine.",
+        "description": "Torznab discovery with native Stremio torrent playback. No local playback or cache.",
         "resources": [
             {
                 "name": "stream",

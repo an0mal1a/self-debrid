@@ -4,8 +4,8 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "self-debrid"
-version = "2.0.0.dev0"
-description = "Standalone media discovery foundation for Self-Debrid v2"
+version = "2.0.0.dev1"
+description = "Self-Debrid discovery and native Stremio torrent addon"
 readme = "README.md"
 requires-python = ">=3.10"
 license = "MIT"

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import math
 import os
+import re
 from dataclasses import dataclass, field
 from typing import Mapping, TypeVar
 from urllib.parse import urlsplit
@@ -11,6 +12,50 @@ from urllib.parse import urlsplit
 from self_debrid.domain.ranking import DEFAULT_RESOLUTION_ORDER, RankingPreferences
 
 Number = TypeVar("Number", int, float)
+
+
+@dataclass(frozen=True, slots=True)
+class ServerSettings:
+    host: str = "127.0.0.1"
+    port: int = 8080
+    public_base_url: str | None = None
+
+    def __post_init__(self) -> None:
+        if not re.fullmatch(r"[a-zA-Z0-9._:-]{1,253}", self.host):
+            raise ValueError("HTTP_HOST must be an IP address or hostname")
+        if type(self.port) is not int or not 1 <= self.port <= 65535:
+            raise ValueError("HTTP_PORT must be an integer from 1 to 65535")
+        if self.public_base_url is not None:
+            try:
+                parts = urlsplit(self.public_base_url)
+                valid = (
+                    parts.scheme in ("http", "https")
+                    and parts.hostname
+                    and not (
+                        parts.username
+                        or parts.password
+                        or parts.query
+                        or parts.fragment
+                    )
+                    and (parts.port is None or 1 <= parts.port <= 65535)
+                    and not any(
+                        character.isspace() for character in self.public_base_url
+                    )
+                )
+            except ValueError:
+                valid = False
+            if not valid:
+                raise ValueError(
+                    "PUBLIC_ADDON_URL must be an HTTP(S) base URL without credentials or query"
+                )
+            object.__setattr__(
+                self, "public_base_url", self.public_base_url.rstrip("/")
+            )
+
+    @property
+    def manifest_url(self) -> str:
+        host = f"[{self.host}]" if ":" in self.host else self.host
+        return (self.public_base_url or f"http://{host}:{self.port}") + "/manifest.json"
 
 
 @dataclass(frozen=True, slots=True)
@@ -42,6 +87,7 @@ class AppConfig:
     ranking: RankingPreferences = RankingPreferences()
     max_concurrency: int = 4
     provider_timeout: float = 20.0
+    server: ServerSettings = ServerSettings()
 
     def __post_init__(self) -> None:
         if type(self.max_concurrency) is not int or self.max_concurrency < 1:
@@ -86,4 +132,9 @@ class AppConfig:
             ),
             max_concurrency=number("MAX_CONCURRENCY", "4", int),
             provider_timeout=number("PROVIDER_TIMEOUT", "20", float),
+            server=ServerSettings(
+                host=env.get("HTTP_HOST", "127.0.0.1"),
+                port=number("HTTP_PORT", "8080", int),
+                public_base_url=env.get("PUBLIC_ADDON_URL") or None,
+            ),
         )
