@@ -22,11 +22,15 @@ self_debrid/
         episode_selection.py
         validation.py
         ranking.py
+        torrents.py
+        file_selection.py
     application/
         __init__.py
         search.py
         metadata.py
         cache.py
+        torrent_client.py
+        playback.py
     providers/
         __init__.py
         base.py
@@ -38,6 +42,7 @@ self_debrid/
         cinemeta.py
     adapters/
         __init__.py
+        qbittorrent.py
         stremio/
             __init__.py
             streams.py
@@ -48,6 +53,10 @@ self_debrid/
         bootstrap.py
         reliability.py
         doctor.py
+        torrent_config.py
+        torrent_source.py
+        torrent_paths.py
+        torrent_engine.py
 ```
 
 `identity.py` and `deduplication.py` are separate pure modules because they are
@@ -371,14 +380,48 @@ Doctor does not use the retained discovery cache so failures are visible. There
 is no HTTP diagnostic route; no public secret/config surface is introduced.
 Doctor exit zero means diagnostics completed, not that playback is verified.
 
+## Phase 3A backend preparation
+
+This branch now includes a separate, explicitly invoked preparation use case.
+`PlaybackService` depends on the `TorrentClient` and `DownloadWorkspace` protocols,
+immutable domain torrent metadata and pure `select_video_file`. It imports no
+qBittorrent implementation, HTTP framework or infrastructure. The composition
+root `open_torrent_engine` supplies `QBittorrentClient` and `LocalDownloadWorkspace`
+using immutable `TorrentEngineSettings`. Nothing is initialized on import, and
+the discovery CLI and Stremio server do not construct this service.
+
+The application reserves a bounded opaque session, resolves the chosen source,
+submits a new torrent, polls bounded metadata, stops owned work, verifies a file,
+resolves its internal safe path, configures file priorities and starts downloading.
+Actual file indices replace provider hints only after independent name/identity
+checks. The domain selector never examines file size to break ambiguity. Client
+models do not escape into the application. No session field sets discovery cache
+status or changes native Stremio streams.
+
+Sessions hold private local locations but expose only an allowlisted public view.
+Progress, peer availability and verified complete local bytes are separate facts.
+Per-record locks serialize lifecycle operations; active sessions and retained
+terminal records have independent bounds, with lazy TTL/count eviction of terminal
+records only. Uncertain stop failures keep their active slot, allowing explicit
+close retry without silently overcommitting downloads. There is no persistence
+or adoption of previous-process torrents, and no removal API or disk eviction.
+
+The adapter uses qBittorrent 4.6/5.x Web API, a private SID session and versioned
+pause/resume versus stop/start verbs. Every mutation rechecks the unique owner tag,
+original save directory and disabled automatic management. Pre-existing torrents
+are refused. Metainfo URLs use a separate cookieless client, authorized origins,
+no redirects, response limits, bounded bencode parsing and exact v1 info hashing.
+Magnets stop automatically at metadata receipt before payload selection. Exact
+selection, path restrictions and API limitations are detailed in
+[TORRENT_ENGINE.md](TORRENT_ENGINE.md). No streaming endpoint exists.
+
 ## Future layers, outside this phase
 
-Exact torrent metadata and movie/episode file matching precede qBittorrent
-sessions and local byte-range streaming in Phase 3. SQLite will later persist
+Local byte-range streaming remains outside Phase 3A. SQLite will later persist
 cache, files and sessions without becoming a dependency of pure functions.
 A new Kodi adapter will translate into the same application services without
 importing the v1 runtime. Configure UI, extra providers and direct-download
-integrations remain future work. Stop after Phase 2.5 for Lead Developer review.
+integrations remain future work. Stop after Phase 3A for Lead Developer review.
 
 ## Protocol references
 

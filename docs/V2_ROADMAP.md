@@ -68,15 +68,33 @@ and Lead Developer review remain required before playback reliability claims.
 - Local doctor capability, failure, filter and native-compatibility diagnostics.
 - Offline metadata/cache/mixed-provider/CLI/HTTP regression tests.
 
-Stop after Phase 2.5 for Lead Developer review. No Phase 3 work is authorized.
+Accepted at 8c8f1ce. The Lead Developer authorized Phase 3A below; live discovery
+and Stremio smoke validation remain outstanding.
 
-## Phase 3 — Torrent playback engine (not implemented)
+## Phase 3A — Torrent engine foundation
 
-- Torrent metadata retrieval and exact movie/episode file selection.
-- Correct handling of season packs; no largest-file shortcut.
-- qBittorrent file priorities and playback-oriented download sessions.
+Status: implemented and validated offline; awaiting Lead Developer review and a
+real qBittorrent smoke test. No managed playback or streaming endpoint is claimed.
+
+- Protocol-independent torrent client and workspace interfaces.
+- qBittorrent 4.6/5.x login, bounded metainfo submission/metadata polling, actual
+  file indices, download state, priorities and guarded download preferences.
+- Exact pure movie/episode file selection, season packs and ambiguity errors.
+- Bounded volatile sessions, opaque identifiers, safe paths, separate provider
+  hints and verified indices, progress and conservative local availability.
+- Owned-new-torrent policy, per-mutation ownership checks and non-deleting cleanup.
+- Explicit origin authorization for bounded, hash-verified torrent downloads.
+- Offline client/selection/lifecycle/security tests and unchanged Stremio behavior.
+
+Stop after Phase 3A for Lead Developer review. No Phase 3B work is authorized.
+See [backend design and smoke procedure](TORRENT_ENGINE.md).
+
+## Phase 3B — Managed playback HTTP delivery (not implemented)
+
 - Stable stream identifiers, MIME types, HEAD and HTTP Range support.
 - Seek behavior and cancellation while downloading.
+- Verified contiguous piece availability and safe file opening for media delivery.
+- Future client integration of managed playback, separate from native torrent streams.
 
 ## Phase 4 — Persistent cache (not implemented)
 

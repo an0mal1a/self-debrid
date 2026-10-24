@@ -7,7 +7,9 @@ release candidates with structured provider failures.
 
 **Implemented: discovery and a native Stremio torrent addon.** The aiohttp server
 returns ranked BitTorrent v1 hash streams for Stremio to play with its own torrent
-engine. Self-Debrid does not download torrents or serve local video bytes.
+engine. A separate opt-in Phase 3A backend library can prepare a verified torrent
+file and start its qBittorrent download. It serves no local video bytes and is not
+invoked by the Stremio addon or discovery CLI.
 Live Stremio playback and real Prowlarr integration have not been verified.
 Phase 2.5 adds optional Cinemeta title/year lookup, multi-indexer configuration,
 short-lived shared discovery caching and local diagnostics.
@@ -21,8 +23,8 @@ short-lived shared discovery caching and local diagnostics.
 - `v2-development`: independent v2 package, with no v1 modules or runtime imports.
 
 v1 resolves links discovered by a Kodi addon. v2 takes responsibility for source
-discovery and will eventually own file selection, downloading, caching and
-streaming. A native Stremio HTTP adapter is implemented; a new Kodi adapter
+discovery, with a backend foundation for file selection and downloading; caching
+and local streaming come later. A native Stremio HTTP adapter is implemented; a new Kodi adapter
 will follow later. v2 does not preserve the v1 API or its configuration.
 
 ## Implemented
@@ -53,9 +55,15 @@ will follow later. v2 does not preserve the v1 API or its configuration.
 - Explicit release labels for resolution, codecs, HDR, languages and episodes;
   optional size and seed metadata from the feed.
 - CLI, environment configuration and offline `unittest` coverage.
+- Protocol-independent torrent client/workspace ports and a qBittorrent 4.6/5.x
+  adapter with bounded login, metadata, file-list, priority and state operations.
+- Pure file selection from actual torrent metadata, including exact episodes in
+  season packs, sample/extra exclusion and structured ambiguity failures.
+- Opt-in preparation sessions with verified indices, safe internal paths, bounded
+  memory/concurrency and ownership-checked download controls; no torrent deletion.
 
 Not implemented: qBittorrent-based local playback, local HTTP/Range streaming,
-cache persistence, configure UI, torrent metadata retrieval/exact file verification,
+cache persistence, configure UI,
 and the Kodi adapter. Additional discovery providers can implement the existing
 `Provider` protocol; only Torznab is implemented. Torrentio, JDownloader, Docker
 and client configuration UI are outside this phase.
@@ -280,7 +288,8 @@ markers is accepted. **Stremio then selects the largest torrent file**; the stre
 description says so. This fallback is evidence from naming, not verified file
 selection: misleading names, samples, extras or multiple versions can still pick
 the wrong file. Movies without an index use the same largest-file behavior.
-Exact torrent metadata inspection belongs to Phase 3.
+The separate Phase 3A backend can inspect metadata and verify a file, but this
+does not change the native Stremio serialization or fallback policy.
 
 ## Discovery reliability and diagnostics
 
@@ -337,6 +346,69 @@ seeders, then stable identity/provider/metadata tie-breakers. Maximum size and
 minimum seeders are eligibility filters. Cached results bypass the seed minimum.
 Unknown sizes/seeders remain eligible; preferences do not invent missing metadata.
 Torznab does not claim that any result is cached.
+
+## Opt-in torrent preparation backend (Phase 3A)
+
+This is a Python library foundation for future managed playback. `serve`, `search`
+and `doctor` keep their existing discovery/native-Stremio behavior. There is no
+torrent preparation HTTP endpoint or automatic downloading from discovery results.
+
+Configure a private qBittorrent 4.6/5.x Web UI and an absolute directory that both
+processes see at exactly the same path. Keep qBittorrent on loopback/private LAN;
+do not publish its Web UI or embed its credentials in addon URLs. The default
+client endpoint is `http://127.0.0.1:8080`; change its port when the addon also uses
+8080. `.env.example` contains the optional backend settings.
+
+```python
+from self_debrid.domain.models import MediaRequest, StreamCandidate
+from self_debrid.infrastructure.torrent_config import TorrentEngineSettings
+from self_debrid.infrastructure.torrent_engine import open_torrent_engine
+
+
+async def prepare_selected(request: MediaRequest, candidate: StreamCandidate):
+    # The caller explicitly selects a candidate; no automatic first-result download.
+    async with open_torrent_engine(TorrentEngineSettings.from_env()) as engine:
+        session = await engine.prepare(request, candidate)
+        print(session.public_view())  # No local paths, tracker URLs or credentials.
+        if session.error is None:
+            updated = await engine.refresh(session.id)
+            print(updated.public_view())
+        # Context exit stops verified owned work; torrents and data remain in qBit.
+```
+
+Only new torrents are accepted. Existing torrents, even from a previous Self-Debrid
+process, return `torrent_exists`. Unique session tags and directories guard every
+mutation. Use a dedicated qBittorrent instance where possible: the Web API has no
+atomic “add only if absent” operation across independent clients.
+
+Movies use recognized video extensions and exclude samples, trailers, extras,
+subtitles and multipart/CD releases. A supplied canonical title/year must agree
+with the actual filename (or the immediate parent for generic `movie.mkv` names).
+One otherwise eligible video can be accepted without title metadata; this verifies
+the file index, not the content's IMDb identity. Several unrelated files are
+ambiguous. Episodes require exact `S02E05`, `S02.E05` or `2x05` evidence in the
+filename; season packs work when the individual episode is unambiguous. Unknown,
+wrong or multi-episode names are rejected. A provider index cannot override these
+checks. Matching alternate encodes require an independently valid index hint.
+Conservative matching can reject aliases or unusual naming; it never picks by size.
+
+Magnets are added with a metadata-received stop condition, then the engine verifies
+the file, assigns priority 7 to it and 0 to other files, sets supported sequential/
+first-last preferences and starts downloading. These preferences do not guarantee
+smooth playback and adjacent torrent pieces may contain bytes of other files.
+Partial progress never becomes a claim of contiguous/local playable bytes. Peer
+availability is reported separately. v2-only torrents are excluded for now.
+
+HTTP(S) torrent locators require `TORRENT_DOWNLOAD_ORIGINS` authorization. Self-Debrid
+fetches only the explicitly selected locator, without redirects or qBittorrent
+cookies, validates bounded bencoded metainfo and verifies its v1 hash before upload.
+It never submits an arbitrary remote HTTP URL to qBittorrent. Signed URLs and
+private trackers remain internal; use magnets or v1 hashes when no download origin
+is authorized. No API key is added automatically to a locator.
+
+See [backend design, limits and manual smoke test](docs/TORRENT_ENGINE.md).
+Live qBittorrent integration has not been tested in this environment. There is no
+HTTP streaming, persistent file cache, session recovery or playback readiness claim.
 
 ## Tests and package validation
 

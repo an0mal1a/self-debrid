@@ -21,11 +21,12 @@ are implemented. Domain/ranking/metadata/deduplication and episode evidence rema
 pure. SearchService owns orchestration and episode filtering before deduplication.
 The aiohttp adapter translates requests and serializes native torrent streams.
 
-The Lead Developer accepted Phase 2 at b39f5be and authorized Phase 2.5 discovery
-reliability: optional metadata resolution, multi-indexer config, bounded memory
-caches, conservative validation and local doctor diagnostics. Stop after Phase 2.5. Do not begin Phase 3 or add Torrentio, torrent downloading, qBittorrent
-playback, JDownloader, local HTTP Range streaming, configure UI, SQLite, Docker,
-a frontend/custom player, or a Kodi adapter.
+Phase 2.5 discovery reliability was accepted at 8c8f1ce. The Lead Developer then
+authorized Phase 3A: a torrent-client port, qBittorrent adapter, exact selection
+from actual torrent files and bounded preparation sessions. This backend is an
+explicit library API, separate from SearchService and the native Stremio routes.
+Stop after Phase 3A for review. Do not begin HTTP video/Range streaming, SQLite,
+Torrentio, JDownloader, Docker, a frontend/configure UI, custom player or Kodi work.
 
 ## Architecture invariants
 
@@ -93,3 +94,36 @@ a frontend/custom player, or a Kodi adapter.
   remote strings in diagnostic output. Capability output uses a known allowlist.
 - All tests are offline; loopback HTTP is allowed. Do not claim real playback
   reliability until an operator performs the documented Prowlarr/Stremio test.
+
+## Phase 3A torrent foundation invariants
+
+- Application orchestration depends on TorrentClient and DownloadWorkspace ports,
+  never qBittorrent models, HTTP handlers or concrete filesystem infrastructure.
+- File selection is pure and reads actual client file indices. A provider index
+  is an untrusted hint; independent file identity checks must still pass. Never
+  choose an episode or an ambiguous movie by largest size. Reject unsafe selection.
+- Only explicitly submitted, uniquely tagged torrents in their original per-session
+  directories may be mutated. Refuse all pre-existing torrents, including leftovers
+  from previous processes. Recheck ownership before each mutation. There is no
+  delete/remove API and cleanup never removes torrents, directories or data.
+- Magnets stop on metadata receipt before payload strategy is applied; supported
+  metainfo uploads start stopped. Prioritize only the verified file and disable
+  unrelated files. Sequential/first-last settings are preferences, not a playback
+  guarantee; never blindly retry non-idempotent toggles.
+- qBittorrent 4.6/5.x only for this iteration; require explicit file indices. All
+  network calls, metadata polling, preparation and cleanup waits are bounded.
+- Torrent download URLs require explicit origin authorization. Fetch bounded v1
+  metainfo with a separate cookieless session, no redirects and hash validation.
+  Never send the qBittorrent SID to an indexer or pass arbitrary HTTP URLs to add.
+- Resolve torrent paths under a configured shared local directory; reject traversal,
+  absolute/drive paths, symlinks and non-portable components. Never serialize local
+  paths, locators, credentials or raw remote exceptions. Use public_view(), not
+  dataclass serialization, for sessions.
+- Bound active and retained sessions. An uncertain failed stop retains its capacity
+  slot until recovery. Sessions are volatile; no automatic restart adoption.
+- File progress is not a contiguous playable range. Peer availability is not local
+  byte availability. Report available bytes only for a fully downloaded, locally
+  present file of the expected size; discovery candidates remain unchanged.
+- Native Stremio streams and their existing fallback policy stay unchanged. This
+  foundation provides no Self-Debrid playback URL. Live qBittorrent behavior remains
+  an operator smoke-test requirement; synthetic tests do not establish compatibility.
