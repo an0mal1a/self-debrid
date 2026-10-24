@@ -1,0 +1,14 @@
+{
+  "movie": [
+    {"index": 4, "name": "Arrival.2016/Arrival.2016.1080p.mkv", "size": 4000000000, "progress": 0.25, "availability": 0.8},
+    {"index": 0, "name": "Arrival.2016/Sample/sample.mkv", "size": 20000000, "progress": 0.0},
+    {"index": 9, "name": "Arrival.2016/trailer.mp4", "size": 30000000, "progress": 0.0},
+    {"index": 2, "name": "Arrival.2016/Subs/English.srt", "size": 100000, "progress": 0.0}
+  ],
+  "season": [
+    {"index": 7, "name": "Example.Show.S02/Example.Show.S02E04.1080p.mkv", "size": 6000000000, "progress": 0.0},
+    {"index": 2, "name": "Example.Show.S02/Example.Show.S02E05.720p.mkv", "size": 900000000, "progress": 0.1},
+    {"index": 0, "name": "Example.Show.S02/Example.Show.S02E06.1080p.mkv", "size": 3000000000, "progress": 0.0},
+    {"index": 8, "name": "Example.Show.S02/Extras/S02E05.mkv", "size": 100000000, "progress": 0.0}
+  ]
+}

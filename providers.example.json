@@ -1,0 +1,6 @@
+{
+  "providers": [
+    {"name": "prowlarr-public", "url": "http://127.0.0.1:9696/1/api", "api_key_env": "PROWLARR_API_KEY"},
+    {"name": "prowlarr-second", "url": "http://127.0.0.1:9696/2/api", "api_key_env": "PROWLARR_API_KEY"}
+  ]
+}

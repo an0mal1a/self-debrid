@@ -1,0 +1,8 @@
+<rss xmlns:t="http://torznab.com/schemas/2015/feed"><channel>
+<item><title>Show.S02E05.1080p</title><t:attr name="infohash" value="1111111111111111111111111111111111111111"/></item>
+<item><title>Show.S02E01-S02E10.1080p</title><t:attr name="infohash" value="2222222222222222222222222222222222222222"/><t:attr name="fileindex" value="4"/></item>
+<item><title>Show.S02.Complete.1080p</title><t:attr name="infohash" value="3333333333333333333333333333333333333333"/><t:attr name="fileindex" value="4"/><t:attr name="season" value="2"/><t:attr name="episode" value="5"/></item>
+<item><title>Show.S02E06.1080p</title><t:attr name="infohash" value="4444444444444444444444444444444444444444"/><t:attr name="fileindex" value="6"/></item>
+<item><title>Show.S02.Complete.1080p</title><t:attr name="infohash" value="5555555555555555555555555555555555555555"/><t:attr name="fileindex" value="6"/><t:attr name="season" value="2"/></item>
+<item><title>Show.S02.Complete.1080p</title><t:attr name="infohash" value="6666666666666666666666666666666666666666"/><t:attr name="season" value="2"/><t:attr name="episode" value="5"/></item>
+</channel></rss>

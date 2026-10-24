@@ -68,3 +68,5 @@ htmlcov/
 *.tmp
 *.temp
 temp/
+# Local multi-provider configuration
+providers.json

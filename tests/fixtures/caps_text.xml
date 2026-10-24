@@ -1,0 +1,5 @@
+<caps><searching>
+<search available="yes" supportedParams="q"/>
+<movie-search available="yes" supportedParams="q"/>
+<tv-search available="yes" supportedParams="q,season,ep,tvdbid"/>
+</searching></caps>

@@ -1,340 +1,439 @@
-# 🎬 Self-Debrid
+# Self-Debrid v2
 
-**A free, self-hosted alternative to premium debrid services like Real-Debrid, AllDebrid, and Premiumize.**
+Self-Debrid v2 is a standalone Python foundation for a lightweight, self-hosted
+media discovery, download, cache and streaming engine. Its core accepts movie or
+episode requests, aggregates discovery providers, and returns normalized, ranked
+release candidates with structured provider failures.
 
-Stream torrents and direct downloads (1fichier, MediaFire, etc.) through Kodi without paying monthly fees. Everything runs locally using free services.
+**Implemented: discovery and a native Stremio torrent addon.** The aiohttp server
+returns ranked BitTorrent v1 hash streams for Stremio to play with its own torrent
+engine. A separate opt-in Phase 3A backend library can prepare a verified torrent
+file and start its qBittorrent download. It serves no local video bytes and is not
+invoked by the Stremio addon or discovery CLI.
+Live Stremio playback and real Prowlarr integration have not been verified.
+Phase 2.5 adds optional Cinemeta title/year lookup, multi-indexer configuration,
+short-lived shared discovery caching and local diagnostics.
 
-This project was thinked to use with **Palantir 3**, but its known that works with other similar plugins.
+## v1 and v2 are separate applications
 
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-[![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
-[![GitHub stars](https://img.shields.io/github/stars/an0mal1a/self-debrid?style=social)](https://github.com/an0mal1a/self-debrid/stargazers)
-[![GitHub issues](https://img.shields.io/github/issues/an0mal1a/self-debrid)](https://github.com/an0mal1a/self-debrid/issues)
+- [`main`](https://github.com/an0mal1a/self-debrid/tree/main): stable Kodi /
+  AllDebrid-compatible v1 implementation.
+- [`v1-kodi`](https://github.com/an0mal1a/self-debrid/tree/v1-kodi): preserved v1
+  maintenance branch.
+- `v2-development`: independent v2 package, with no v1 modules or runtime imports.
 
----
-## What's New
-After returning to this project, I noticed that the account connection flow was incomplete. Existing API keys from previous installations continue to work, but new accounts could not be paired correctly.
+v1 resolves links discovered by a Kodi addon. v2 takes responsibility for source
+discovery, with a backend foundation for file selection and downloading; caching
+and local streaming come later. A native Stremio HTTP adapter is implemented; a new Kodi adapter
+will follow later. v2 does not preserve the v1 API or its configuration.
 
-Self-Debrid now includes a complete local pairing workflow: Kodi displays a short code, you approve it in the Self-Debrid page, and the addon receives its API key automatically. No manual API-key copy and paste is required.
+## Implemented
 
+- Validated movie/episode `MediaRequest` and immutable `StreamCandidate` models.
+- Stream-only Stremio manifest and movie/series HTTP resources using IMDb IDs
+  (`tt1234567` and `tt1234567:2:5`), plus `/health` liveness.
+- Pure Stremio serialization of supported v1 torrent hashes and reliable file
+  indices, with useful release metadata and no download URL passthrough.
+- Conservative episode filtering before deduplication; ambiguous packs require
+  an explicit index and a matching episode mapping.
+- Async provider registry with bounded concurrency, per-provider timeouts,
+  cancellation propagation and structured failures.
+- `SearchService`: provider aggregation, normalization, metadata-preserving
+  deduplication, preference filtering and deterministic ranking.
+- Async Torznab discovery, including per-indexer Prowlarr Torznab endpoints.
+- Capability discovery, IMDb-first searches and optional Cinemeta title/year
+  hydration when a configured indexer needs a supported text query.
+- Up to 16 independently named endpoints from a small JSON file with environment
+  references for API keys; the single-indexer environment setup remains supported.
+- Bounded positive/negative metadata caches and short-lived discovery-result cache
+  with shared in-flight work, cancellation isolation and no download-cache claims.
+- Movie identity/title/year checks and local `doctor` exclusion/error diagnostics.
+- Safe XML parsing, bounded response sizes, explicit connection/read timeouts.
+- Partial-item recovery: good RSS items survive bad items; one sanitized summary
+  records the skipped count and at most five item positions per feed.
+- Recognized torrent locators are retained separately from unverified details links.
+- Explicit release labels for resolution, codecs, HDR, languages and episodes;
+  optional size and seed metadata from the feed.
+- CLI, environment configuration and offline `unittest` coverage.
+- Protocol-independent torrent client/workspace ports and a qBittorrent 4.6/5.x
+  adapter with bounded login, metadata, file-list, priority and state operations.
+- Pure file selection from actual torrent metadata, including exact episodes in
+  season packs, sample/extra exclusion and structured ambiguity failures.
+- Opt-in preparation sessions with verified indices, safe internal paths, bounded
+  memory/concurrency and ownership-checked download controls; no torrent deletion.
 
-## ❗Advertisement
-I've noticed that this repository is getting a few stars; there are some known issues that I think I can fix easily. One of the most important ones is the ~~need to restart the API to refresh the JDownloader session~~. If I have time, I'll fix a few bugs and improve the project!
+Not implemented: qBittorrent-based local playback, local HTTP/Range streaming,
+cache persistence, configure UI,
+and the Kodi adapter. Additional discovery providers can implement the existing
+`Provider` protocol; only Torznab is implemented. Torrentio, JDownloader, Docker
+and client configuration UI are outside this phase.
 
-## ✨ Features
+## Development installation
 
-- 🧲 **Torrent support** via qBittorrent - Download and stream torrents
-- 📥 **Direct downloads** via JDownloader - Support for 1fichier, MediaFire, Uptobox, and 100+ hosters
-- 🎬 **Live streaming** - Start watching while downloading (no waiting for completion)
-- 💾 **Smart caching** - Reuses downloaded files automatically
-- 🆔 **No duplicate downloads** - Intelligent file tracking by unique ID
-- 🔒 **HTTPS API** - Drop-in replacement for AllDebrid/Real-Debrid addons in Kodi
-- 💰 **100% Free** - Uses only free services (no premium accounts needed)
+Use Python **3.10+**. CI covers Python 3.10, 3.11 and 3.12.
 
----
-
-## 📋 Requirements
-
-### Software
-- **Python 3.10+** - [Download](https://www.python.org/downloads/)
-- **qBittorrent** - [Download](https://www.qbittorrent.org/download.php) (for torrents)
-- **JDownloader 2** - [Download](https://jdownloader.org/download/index) (for direct downloads - **highly recommended**)
-
-### Why JDownloader?
-This project is intended to use with Kodi and specific specific plugin that almost always uses 1fichier, this hoster in the free tier has a very slow download and high timeout, using JDownloader, the speed of the download is incredible (100MB/s) and the cooldown between downloads are shorts (5 to 10 minutes), this is **more than enough** to stream a movie or TV episode.
-
----
-
-## 🚀 Quick Start
-
-### 1. Install Dependencies
-
-```bash
-# Clone the repository
-git clone https://github.com/an0mal1a/self-debrid.git
+```sh
+git clone --branch v2-development https://github.com/an0mal1a/self-debrid.git
 cd self-debrid
-
-# Install Python packages
-python3 -m .venv venv
-source .venv/bin/activate  # LINUX
-.venv/Scripts/Activate.ps1 # WINDOWS
-pip install -r requirements.txt
+python -m venv .venv
+. .venv/bin/activate
+python -m pip install -e .
+python -m self_debrid --help
+self-debrid --version
 ```
 
-### 2. Configure Services
+On Windows, activate with `.venv\Scripts\Activate.ps1` in PowerShell.
 
-#### a) Setup qBittorrent
+Runtime dependencies are `aiohttp>=3.10,<4` (cancellable async HTTP) and
+`defusedxml>=0.7.1,<1` (XML safety). Dependencies are declared in `pyproject.toml`.
+`unittest` is included in Python. The server uses the existing `aiohttp.web`;
+no additional runtime dependency, web framework or database was added in Phase 2.
 
-1. Install and open qBittorrent
-2. Go to **Tools → Options → User Interface**
-3. Enable "Web Interface"
-4. Set username: `admin`
-5. Set password: `adminadmin` (or your choice)
-6. Port: `8080` (default)
+## Configuration and CLI
 
-#### b) Setup JDownloader (Required for most content)
+Copy `.env.example` to `.env` and enter the API key locally. The application reads
+**exported environment variables**, not `.env` files automatically. For a trusted
+local `.env` file in a POSIX shell:
 
-1. Create a free account at [my.jdownloader.org](https://my.jdownloader.org)
-2. Install JDownloader 2
-3. Open JDownloader → Settings → My.JDownloader
-4. Log in with your account
-5. Note your device name (e.g., "JDownloader@yourusername")
-
-#### c) Generate SSL Certificates
-
-Self-Debrid uses HTTPS to be compatible with Kodi streaming addon.
-
-```bash
-# Create cert directory
-mkdir cert
-
-# Generate self-signed certificate (valid for 1 year)
-openssl req -x509 -newkey rsa:4096 -nodes -out cert/cert.pem -keyout cert/key.pem -days 365
-```
-
-When prompted, you can press Enter for all fields or fill them as you like.
-
-### 3. Configure Environment
-
-Copy the example configuration:
-
-```bash
+```sh
 cp .env.example .env
+# Edit .env, then export its values:
+set -a
+. ./.env
+set +a
+self-debrid search movie tt1234567 --title 'Example Movie'
+self-debrid search series tt1234567:2:5 --title 'Example Show'
 ```
 
-Edit `.env` with your settings.
+In PowerShell, set variables with `$env:TORZNAB_URL = 'http://localhost:9696/1/api'`
+and `$env:TORZNAB_API_KEY = 'your-local-key'` before running the same commands.
+Never commit your API key or a URL containing one.
 
-### 4. Run Self-Debrid
+| Variable | Default | Meaning |
+| --- | --- | --- |
+| `HTTP_HOST` | `127.0.0.1` | HTTP bind host; use `0.0.0.0` explicitly for LAN access |
+| `HTTP_PORT` | `8080` | HTTP port, 1–65535 |
+| `PUBLIC_ADDON_URL` | empty | Optional advertised base URL; used only for the startup installation address |
+| `TORZNAB_URL` | required without `PROVIDERS_FILE` | Complete per-indexer Torznab endpoint, without query parameters |
+| `PROVIDERS_FILE` | empty | Private JSON config of 1–16 named Torznab endpoints; replaces single-endpoint settings |
+| `CINEMETA_ENABLED` | `false` | Opt-in lazy IMDb → title/year lookup; sends requested IDs/media types to Cinemeta |
+| `METADATA_CONNECT_TIMEOUT` / `METADATA_READ_TIMEOUT` | `3` / `5` | Metadata connection/read deadlines in seconds |
+| `METADATA_TTL` / `METADATA_NEGATIVE_TTL` | `3600` / `30` | Positive/negative metadata retention in seconds |
+| `METADATA_CACHE_ENTRIES` | `256` | Metadata LRU entry bound; also limited to 512 KiB estimated payload |
+| `DISCOVERY_CACHE_TTL` | `30` | Successful discovery retention, seconds; `0` disables retained results |
+| `DISCOVERY_CACHE_ENTRIES` / `DISCOVERY_CACHE_BYTES` | `128` / `8388608` | Discovery LRU count/estimated payload byte bounds |
+| `DISCOVERY_MAX_INFLIGHT` | `32` | Distinct active discovery requests; identical requests share work |
+| `TORZNAB_API_KEY` | empty | API key, sent as an encoded Torznab query parameter |
+| `TORZNAB_NAME` | `prowlarr` | Stable provider identifier |
+| `CONNECT_TIMEOUT` | `5` | HTTP connection timeout, seconds |
+| `READ_TIMEOUT` | `10` | HTTP socket read timeout, seconds |
+| `PROVIDER_TIMEOUT` | `20` | Entire active provider search, including capabilities, seconds |
+| `MAX_CONCURRENCY` | `4` | Maximum active provider operations across the shared registry |
+| `RESOLUTION_ORDER` | `2160p,1080p,720p,480p` | Most preferred first |
+| `PREFERRED_LANGUAGES` | empty | Comma-separated codes: `es`, `en`, `es-419`, `multi` |
+| `MAX_SIZE_BYTES` | empty | Optional upper size limit, including cached results |
+| `MIN_SEEDERS` | `0` | Minimum known seeders for uncached results |
 
-```bash
-python main.py
+Configuration is read at the CLI boundary, never during imports or inside the domain.
+The CLI and server use the same immutable settings and ProviderRegistry. Metadata
+resolution is an application-facing protocol, independent of Stremio HTTP handlers
+and Torznab. No catalog resource, external API key, database or new runtime dependency
+is needed.
+
+### Configure multiple Prowlarr indexers
+
+Copy `providers.example.json` to `providers.json` and edit endpoints:
+
+```json
+{
+  "providers": [
+    {"name": "public-one", "url": "http://127.0.0.1:9696/1/api", "api_key_env": "PROWLARR_API_KEY"},
+    {"name": "public-two", "url": "http://127.0.0.1:9696/2/api", "api_key_env": "PROWLARR_API_KEY"}
+  ]
+}
 ```
 
-You should see:
+Set `PROVIDERS_FILE=providers.json` and `PROWLARR_API_KEY` locally in your exported
+`.env`. Keys may reference different environment variables per indexer. An omitted
+`api_key_env` means no key; a referenced variable must exist. Inline `api_key`
+fields, duplicate names (case-insensitive), unknown fields, query credentials and
+more than 16 providers are rejected. The JSON read is limited to 64 KiB. The local
+`providers.json` is gitignored. Config is loaded at startup; restart after edits.
+When set, the file replaces `TORZNAB_URL` rather than appending a duplicate provider.
+With no file, existing `TORZNAB_URL` / `TORZNAB_API_KEY` / `TORZNAB_NAME` work as before.
 
-```
-============================================================
-🚀 SELF-DEBRID
-============================================================
+Choose separate per-indexer endpoints, not a combined feed with ambiguous
+capabilities. API keys stay on the server; never add them to Stremio addon URLs.
 
-📡 API: https://0.0.0.0:443
-🎬 Stream: http://0.0.0.0:8081
-💾 Cache: <carpeta temporal del sistema>
-🔧 qBittorrent: ✅ Connected
-📥 JDownloader: ✅ Connected
-============================================================
-```
+The discovery `search` command still returns JSON containing ordered candidates and failures. Download URLs are
+omitted from CLI output because they may include credentials; library results
+retain them. Exit status is `0` for success (including no matches or partial
+success), `1` for provider failures without any eligible candidates, and `2` for
+invalid arguments/configuration.
 
----
+### Prowlarr and Torznab queries
 
-## 📃 Hosts Setup
+Use a **torrent indexer's** Torznab URL copied from Prowlarr. For example:
+`http://localhost:9696/1/api` or
+`http://localhost:9696/api/v1/indexer/1/newznab`. The Prowlarr web root is not a
+Torznab endpoint. Register indexers separately to respect each one's capabilities.
+These endpoint routes are listed in the [official Prowlarr API](https://prowlarr.com/docs/api/).
 
-In order to allow the plugin Palantir on Kodi works with self-debrid we need to modify our hosts file
+The provider first requests capabilities, following the
+[Torznab specification](https://torznab.github.io/spec-1.3-draft/torznab/Specification-v1.3.html).
+When the relevant parameters are advertised, the encoded requests look like:
 
-- Linux: `echo '127.0.0.1 api.alldebrid.com' | sudo tee -a /etc/hosts'`
-- Windows
-    1. Open this file as admin "C:\Windows\System32\drivers\etc\hosts"
-    2. In a new line add the following text: 127.0.0.1 api.alldebrid.com
-
-## 📺 Kodi Setup
-
-### Configure Your Account
-
-Palantir 3 supports AllDebrid and Real-Debrid. Self-Debrid uses the AllDebrid-compatible option.
-
-1. In Kodi, open **Palantir 3 → Settings → Accounts**.
-2. Enable and select **AllDebrid**.
-3. Start the account authorization process. Kodi will display a four-character code.
-4. On a browser that can access your Self-Debrid server, open `https://api.alldebrid.com/pin/`.
-5. Enter the code displayed in Kodi and select **Authorize device**.
-6. Once the confirmation page is shown, return to Kodi. The account is linked and Kodi saves the generated local API key automatically.
-
-The code expires after 10 minutes. If the browser is on a different device, set `PIN_BASE_URL` to a reachable HTTPS address for this server before starting Self-Debrid. Kodi will display that address during pairing; its certificate must be trusted by the browser.
-
----
-
-## 🎯 How It Works
-
-### For Direct Downloads (1fichier, MediaFire, etc.)
-
-```
-1. Kodi addon finds a 1fichier link
-2. Sends to Self-Debrid API 
-3. Self-Debrid passes link to JDownloader
-4. JDownloader starts downloading
-5. Self-Debrid begins streaming immediately (as soon as 5MB downloaded)
-6. You start watching while download continues in background
+```text
+http://localhost:9696/1/api?t=caps&apikey=REDACTED
+http://localhost:9696/1/api?t=movie&imdbid=1234567&apikey=REDACTED
+http://localhost:9696/1/api?t=tvsearch&imdbid=1234567&season=2&ep=5&apikey=REDACTED
 ```
 
-**Free 1fichier & JDownloader Limitations:**
-- 1 download every 5-10 minutes
-- This is **perfect** for streaming - by the time you finish one episode, the cooldown is over
-- No speed limits (downloads at full speed)
+The IMDb prefix `tt` is removed for the Torznab query. If the indexer advertises
+`q` but not `imdbid`, supply `--title`:
 
-### For Torrents
-
-```
-1. Kodi addon finds a magnet/torrent
-2. Sends to Self-Debrid API
-3. Self-Debrid adds to qBittorrent
-4. Downloads largest file (the video)
-5. Streams to Kodi while downloading
+```text
+http://localhost:9696/1/api?t=movie&q=Example+Movie&apikey=REDACTED
+http://localhost:9696/1/api?t=tvsearch&q=Example+Show&season=2&ep=5&apikey=REDACTED
 ```
 
-### Smart Caching
+If TV coordinate parameters are unavailable, an advertised `q` search uses
+`Example Show S02E05`. An advertised generic `search` is a final title-based
+fallback. With `CINEMETA_ENABLED=true`, missing title/year metadata is resolved
+lazily for providers that advertise usable text search but cannot execute the IMDb
+request. Failed or invalid capabilities are reported rather than guessed. With
+metadata disabled or unavailable, an indexer needing a title returns
+`unsupported_search`; IMDb-capable providers still return their results. Library callers may explicitly supply known
+`TorznabCapabilities` for an endpoint whose caps API is incompatible.
 
-Self-Debrid remembers downloaded files:
-- Each file gets a unique ID (based on the 1fichier file ID or torrent hash)
-- If you request the same file again, it streams from cache instantly
-- Old files are automatically deleted when cache is full
+Capabilities are retained for the lifetime of a provider instance. Only the
+indexer's first/default result page is fetched. There are no retries or HTML
+scrapers. HTTP redirects are rejected to avoid forwarding API keys.
 
----
+Stremio normally supplies only an IMDb ID and episode coordinates. To improve
+title-only indexers, explicitly enable `CINEMETA_ENABLED=true`. This sends requested
+IMDb IDs and media types to `v3-cinemeta.strem.io` when a title is needed. It does
+not send provider keys, search history batches or local candidate lists, and does
+not use Cinemeta as a catalog. No extra metadata API key is required.
 
-## 🛠️ Advanced Configuration
+A provider with advertised IMDb support is queried directly. It does not trigger
+a metadata lookup just because it returned zero matches. Text-only providers share
+one lookup per media type/IMDb ID, with strict payload identity, bounded JSON,
+connection/read/total timeouts and negative caching after outages. Season/episode
+coordinates are preserved when advertised; otherwise `S02E05` is appended to `q`.
+A movie `year` query parameter is sent only when advertised. An explicit CLI
+`--title` avoids metadata lookup. Disabling Cinemeta leaves that CLI path available.
 
-### Change Ports (You CANNOT change the ports, Palantir 3 dont allow you to change or set a custom API)
+## Native Stremio installation
 
-If ports 443 or 8081 are in use (in case of using this with other plugin):
+After exporting the configuration above:
 
-```env
-API_PORT=8443      # Use 8443 instead of 443
-STREAM_PORT=8082   # Use 8082 instead of 8081
+```sh
+self-debrid serve --host 127.0.0.1 --port 8080
+# Equivalent: python -m self_debrid serve --host 127.0.0.1 --port 8080
 ```
 
-Don't forget to update the API URL in Kodi!
+On the same machine, open Stremio Desktop's Addons view, paste
+`http://127.0.0.1:8080/manifest.json` into the addon URL/search field, and confirm
+installation. Open a movie or episode from an existing IMDb catalog and inspect
+its Self-Debrid results. There is no landing page or configure UI.
 
-### Increase Cache Size
+For LAN access, run `self-debrid serve --host 0.0.0.0 --port 8080`. Use the server's
+actual LAN address (for example `192.168.1.50`), not `0.0.0.0` or another device's
+`127.0.0.1`. You can check reachability at `http://192.168.1.50:8080/health`.
 
-```env
-MAX_CACHE_SIZE_GB=100  # Store up to 100GB of files
+The [Stremio SDK testing guide](https://github.com/Stremio/stremio-addon-sdk/blob/master/docs/testing.md)
+documents HTTPS for addon URLs other than `127.0.0.1`. For LAN/remote clients that
+reject HTTP or mixed content, put a trusted HTTPS reverse proxy in front of the
+server and install its `https://.../manifest.json` address. Forward the same paths
+and CORS headers. An optional `PUBLIC_ADDON_URL=https://addon.example.invalid`
+changes only the printed installation address; it does not enable TLS or rewrite
+routes. For a proxy path prefix, the proxy must strip it before forwarding.
+This phase supplies no public hosting or authentication system.
+
+Use a client with a native torrent engine (such as desktop) for the initial
+playback smoke test; a browser alone is not evidence of native torrent playback.
+No trackers, passkeys, magnet URIs or torrent download URLs are sent to Stremio.
+Private trackers requiring authenticated announce URLs are not supported by this
+hash-only handoff. Public peer availability and client codec/platform support
+still determine whether playback starts. See the exact
+[real-client smoke test](docs/STREMIO_SMOKE_TEST.md).
+
+### HTTP contract and file selection
+
+- `GET /manifest.json`: stable ID `com.selfdebrid.addon`, version `2.0.0-dev.2`,
+  movie/series streams only; no catalogs, metadata or configuration resources.
+- `GET /stream/movie/tt1234567.json`: ranked native torrent streams.
+- `GET /stream/series/tt1234567:2:5.json`: conservatively matched episode streams.
+- `GET /health`: local process liveness, without contacting providers.
+
+Successful searches return `{"streams": [...]}` with JSON and CORS headers.
+Empty results and provider failures are represented by `{"streams": []}` with HTTP
+200; healthy providers' results survive other failures. Invalid IDs return a
+sanitized HTTP 400 JSON error. There is no provider failure text in responses.
+The registry bounds each active provider; with N providers and concurrency C,
+the upper search budget is roughly ceil(N/C) provider timeouts plus cleanup.
+Raw HTTP access logs are disabled by the `serve` command.
+
+Only 40-character BitTorrent v1 hashes are serialized as `infoHash`. Base32 v1
+and hybrid magnets normalize correctly. V2-only SHA-256 hashes are retained for
+discovery but excluded from Stremio output. `fileIdx` is emitted only when known
+and within the current Stremio core's supported range (0–65535).
+
+A known index alone does not identify an episode. A pack needs both a known index
+and a matching upstream season/episode mapping. Obvious contradictory episode
+names/attributes are rejected. Without an index, only a single exact SxxExxx
+release name with no season-pack, complete, collection, or multi-episode/range
+markers is accepted. **Stremio then selects the largest torrent file**; the stream
+description says so. This fallback is evidence from naming, not verified file
+selection: misleading names, samples, extras or multiple versions can still pick
+the wrong file. Movies without an index use the same largest-file behavior.
+The separate Phase 3A backend can inspect metadata and verify a file, but this
+does not change the native Stremio serialization or fallback policy.
+
+## Discovery reliability and diagnostics
+
+`self-debrid doctor movie tt1254207` checks configured endpoints/capabilities,
+per-provider search results, safe provider error codes, application exclusions and
+how many surviving candidates cannot be represented as native Stremio torrents.
+For episodes use `self-debrid doctor series tt1234567:2:5` with a real series ID.
+It performs an explicit Cinemeta check when enabled, even if every indexer can
+search by IMDb. `doctor` is a local command, never a public HTTP route. It prints
+no endpoint URLs, candidate hashes/locators or credentials. An exit code of zero
+means diagnostics completed; inspect the per-provider error/status fields.
+
+Results can be excluded for a different echoed IMDb ID, explicit episodic content
+on movie searches, incompatible episode/pack evidence, a movie year differing by
+more than one year, or a clearly different title before a release year/episode/
+quality boundary. Punctuation, accents, bracketed release groups and leading
+English articles are normalized. A matching upstream IMDb ID takes precedence
+over alternate title spelling. Unknown title/year evidence stays unknown and is
+not rejected by a fuzzy-score threshold; numeric titles are treated conservatively.
+Title aliases without an echoed IMDb ID may still be filtered. If lazy metadata
+was already resolved, it validates all providers' results in that search.
+
+Successful discovery results (including genuine empty/fully filtered results)
+are retained briefly with media/configuration-specific keys. Results containing
+provider failures or metadata errors are not retained. An oversized result is
+not retained either. Memory is bounded by entry count, estimated serialized bytes
+and in-flight limits; metadata caches have separate bounds. Concurrent identical
+requests share work; cancelling one waiter leaves other waiters intact, while the
+last waiter cancels unneeded work. TTL zero still permits sharing active work.
+A full in-flight budget produces a safe `busy` failure. Provider concurrency is
+bounded across all searches of the shared registry, not independently per client.
+
+**Discovery-result caching is not downloaded media caching.** It never changes
+`StreamCandidate.cached`, announces file availability or guarantees playback.
+The HTTP `Cache-Control: no-store` response remains unchanged. There is no SQLite
+or restart persistence; capability snapshots last for the provider instance.
+
+## Identity, metadata and ranking
+
+v1 torrent hashes normalize from 40-character hex, 32-character base32, URNs or
+magnets to lowercase hex. SHA-256 v2 multihashes are supported; hybrid magnets
+prefer their v1 hash. Known file indices are part of identity. An unknown file
+index remains a torrent-level identity, distinct from any known file; no file
+selection is inferred and season-pack sizes are not copied onto selected files.
+Duplicates with the same identity merge useful metadata deterministically.
+Hashless HTTP URLs use a conservative URL identity that preserves signed queries.
+
+Metadata is based on explicit labels only. `MULTI` stays `multi`; it does not imply
+English or Spanish. `Latino` maps to `es-419`. Missing size/seed counts remain
+unknown, not zero. Episode labels do not select a torrent file.
+
+Ranking is lexicographic: cached first, resolution preference, language preference,
+seeders, then stable identity/provider/metadata tie-breakers. Maximum size and
+minimum seeders are eligibility filters. Cached results bypass the seed minimum.
+Unknown sizes/seeders remain eligible; preferences do not invent missing metadata.
+Torznab does not claim that any result is cached.
+
+## Opt-in torrent preparation backend (Phase 3A)
+
+This is a Python library foundation for future managed playback. `serve`, `search`
+and `doctor` keep their existing discovery/native-Stremio behavior. There is no
+torrent preparation HTTP endpoint or automatic downloading from discovery results.
+
+Configure a private qBittorrent 4.6/5.x Web UI and an absolute directory that both
+processes see at exactly the same path. Keep qBittorrent on loopback/private LAN;
+do not publish its Web UI or embed its credentials in addon URLs. The default
+client endpoint is `http://127.0.0.1:8080`; change its port when the addon also uses
+8080. `.env.example` contains the optional backend settings.
+
+```python
+from self_debrid.domain.models import MediaRequest, StreamCandidate
+from self_debrid.infrastructure.torrent_config import TorrentEngineSettings
+from self_debrid.infrastructure.torrent_engine import open_torrent_engine
+
+
+async def prepare_selected(request: MediaRequest, candidate: StreamCandidate):
+    # The caller explicitly selects a candidate; no automatic first-result download.
+    async with open_torrent_engine(TorrentEngineSettings.from_env()) as engine:
+        session = await engine.prepare(request, candidate)
+        print(session.public_view())  # No local paths, tracker URLs or credentials.
+        if session.error is None:
+            updated = await engine.refresh(session.id)
+            print(updated.public_view())
+        # Context exit stops verified owned work; torrents and data remain in qBit.
 ```
 
-### Multiple Devices
+Only new torrents are accepted. Existing torrents, even from a previous Self-Debrid
+process, return `torrent_exists`. Unique session tags and directories guard every
+mutation. Use a dedicated qBittorrent instance where possible: the Web API has no
+atomic “add only if absent” operation across independent clients.
 
-Self-Debrid can serve multiple Kodi devices on your network simultaneously.
+Movies use recognized video extensions and exclude samples, trailers, extras,
+subtitles and multipart/CD releases. A supplied canonical title/year must agree
+with the actual filename (or the immediate parent for generic `movie.mkv` names).
+One otherwise eligible video can be accepted without title metadata; this verifies
+the file index, not the content's IMDb identity. Several unrelated files are
+ambiguous. Episodes require exact `S02E05`, `S02.E05` or `2x05` evidence in the
+filename; season packs work when the individual episode is unambiguous. Unknown,
+wrong or multi-episode names are rejected. A provider index cannot override these
+checks. Matching alternate encodes require an independently valid index hint.
+Conservative matching can reject aliases or unusual naming; it never picks by size.
 
----
+Magnets are added with a metadata-received stop condition, then the engine verifies
+the file, assigns priority 7 to it and 0 to other files, sets supported sequential/
+first-last preferences and starts downloading. These preferences do not guarantee
+smooth playback and adjacent torrent pieces may contain bytes of other files.
+Partial progress never becomes a claim of contiguous/local playable bytes. Peer
+availability is reported separately. v2-only torrents are excluded for now.
 
-## 🐛 Troubleshooting
+HTTP(S) torrent locators require `TORRENT_DOWNLOAD_ORIGINS` authorization. Self-Debrid
+fetches only the explicitly selected locator, without redirects or qBittorrent
+cookies, validates bounded bencoded metainfo and verifies its v1 hash before upload.
+It never submits an arbitrary remote HTTP URL to qBittorrent. Signed URLs and
+private trackers remain internal; use magnets or v1 hashes when no download origin
+is authorized. No API key is added automatically to a locator.
 
-### "Archivo no encontrado" (File not found)
+See [backend design, limits and manual smoke test](docs/TORRENT_ENGINE.md).
+Live qBittorrent integration has not been tested in this environment. There is no
+HTTP streaming, persistent file cache, session recovery or playback readiness claim.
 
-**Problem:** JDownloader hasn't started the download yet.
+## Tests and package validation
 
-**Solution:** 
-- Wait 10-15 seconds and retry
-- Check JDownloader is running and connected
-- Verify MyJDownloader credentials in `.env`
+All fixtures are synthetic. Tests do not need Prowlarr, Stremio, qBittorrent or
+external network access. HTTP contract tests use aiohttp test utilities on
+loopback with mocked discovery providers/transport; they do not contact real services.
 
-### qBittorrent Not Connected (If you have dont use in the config this is not a problem)
+```sh
+python -m unittest discover -s tests -v
+python -c 'import self_debrid; from self_debrid.application.search import SearchService'
+python -m self_debrid --help
+self-debrid --version
+self-debrid serve --help
+self-debrid doctor --help
+```
 
-**Problem:** Self-Debrid can't reach qBittorrent.
+To build distribution artifacts:
 
-**Solution:**
-- Verify qBittorrent Web UI is enabled
-- Check username/password in `.env` match qBittorrent settings
-- Ensure port 8080 is correct
+```sh
+python -m pip install build
+python -m build
+```
 
-### JDownloader Not Connected (MyJDownloader) (If you have dont use in the config this is not a problem)
-
-**Problem:** Can't connect to remote JDownloader.
-
-**Solution:**
-- Verify email/password are correct
-- Check device name matches exactly (case-sensitive)
-- Make sure JDownloader is running and logged into MyJDownloader
-- Try local mode: leave `JD_EMAIL` and `JD_PASSWORD` empty in `.env`
-
-### Download Stuck in JDownloader
-
-**Problem:** File in download queue but not starting.
-
-**Solution:**
-- 1fichier cooldown - wait 5-10 minutes
-- Right-click download in JD → Force Download
-- Some hosters may require premium (try another source)
-
----
-
-## 📊 Supported Services
-
-### Direct Download (via JDownloader)
-- ✅ 1fichier (most common)
-- ✅ MediaFire
-- ✅ Uptobox
-- ✅ Mega
-- ✅ RapidGator (free limits)
-- ✅ 100+ other hosters
-
-### Torrents (via qBittorrent)
-- ✅ All magnet links
-- ✅ .torrent files
-- ✅ Any public/private tracker
-
----
-
-🖥️ Platform-Specific Notes
-
-**Windows**
-
-- Run Command Prompt or PowerShell as Administrator when editing hosts file
-- Windows Defender may flag the SSL certificate generation - this is safe to allow
-- Firewall may prompt for network access - allow for both private and public networks
-
-**macOS**
-
-- Use sudo when editing hosts file or installing system-wide packages
-- macOS may require allowing the app in Security & Privacy settings
-- OpenSSL is pre-installed on most macOS versions
-
-**Linux**
-
-- Most distributions include Python 3 by default
-- OpenSSL is typically pre-installed
-- Use your package manager to install qBittorrent: sudo apt install qbittorrent (Debian/Ubuntu)
-
----
-
-## 🤝 Contributing
-
-Contributions are welcome! Feel free to:
-
-- Report bugs
-- Suggest features
-- Submit pull requests
-- Improve documentation
-
----
-
-## 📜 License
-
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
-
----
-
-## ⚠️ Disclaimer
-
-This tool is for **personal use only**. 
-
-- Only download content you have the right to access
-- Respect copyright laws in your country
-- The developers are not responsible for how you use this software
-- Use of this software is at your own risk
-
----
-
-## 🙏 Acknowledgments
-
-- Inspired by the need for a free alternative to premium debrid services
-- Thanks to the developers of qBittorrent and JDownloader
-
----
-
-## 💬 Support
-
-- **Issues:** [GitHub Issues](https://github.com/an0mal1a/self-debrid/issues)
-- **Discussions:** [GitHub Discussions](https://github.com/an0mal1a/self-debrid/discussions)
-
----
-
-**Enjoy streaming without monthly fees! 🎉**
+GitHub Actions runs unit tests, builds the package, installs the wheel and checks
+imports/CLI outside the source directory for each supported CI Python version.
+See [architecture](docs/V2_ARCHITECTURE.md), [roadmap](docs/V2_ROADMAP.md) and
+[engineering rules](AGENTS.md). Phase 2.5 details are recorded in
+[discovery reliability delivery](docs/V2_RELIABILITY_DELIVERY.md).

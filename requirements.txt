@@ -1,4 +1,0 @@
-Flask
-qbittorrent-api
-myjdapi
-python-dotenv

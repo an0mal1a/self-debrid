@@ -1,0 +1,7 @@
+<rss xmlns:t="http://torznab.com/schemas/2015/feed"><channel>
+<item><title>Example.Movie.2024.1080p.English</title><t:attr name="infohash" value="1111111111111111111111111111111111111111"/><t:attr name="seeders" value="25"/></item>
+<item><title>Unrelated.Movie.2024.1080p</title><t:attr name="infohash" value="2222222222222222222222222222222222222222"/></item>
+<item><title>Example.Movie.1998.1080p</title><t:attr name="infohash" value="3333333333333333333333333333333333333333"/></item>
+<item><title>Example.Show.S02E05.1080p</title><t:attr name="infohash" value="4444444444444444444444444444444444444444"/></item>
+<item><title>Example.Movie.2024.1080p</title><t:attr name="infohash" value="5555555555555555555555555555555555555555"/><t:attr name="imdb" value="9999999"/></item>
+</channel></rss>
